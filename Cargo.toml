@@ -1,0 +1,11 @@
+[package]
+name = "serialconverter"
+version = "0.1.0"
+edition = "2021"
+description = "TRV Kocab Sports Timer serial protocol parser and TUI dashboard"
+
+[dependencies]
+serialport = "4"
+ratatui = { version = "0.29", features = ["crossterm"] }
+crossterm = "0.28"
+clap = { version = "4", features = ["derive"] }
