@@ -1,10 +1,10 @@
 /// Probe candidates for discovering TRV Kocab timer time-adjustment commands.
 ///
-/// The confirmed reset command is `RST\r` (0x52 0x53 0x54 0x0D). The original
-/// Windows application can also add 5/10/15 seconds to channel times. Since
-/// the reset command is a simple CR-terminated ASCII string, the time-adjustment
-/// commands likely follow the same pattern. This module provides plausible
-/// candidates to try one at a time while observing channel time changes.
+/// Round 2: The first batch (no lane) had no effect. Since the protocol
+/// includes a lane field and the device operates on lanes 1-4, the command
+/// likely requires a channel/lane identifier. We also try spaced variants,
+/// zero-padded values, CRLF terminators, sports-timing terms (PEN/COR),
+/// and millisecond values. All candidates use lane/channel 1 for consistency.
 
 pub struct ProbeCandidate {
     pub label: &'static str,
@@ -15,89 +15,115 @@ pub struct ProbeCandidate {
 pub const RESET_CMD: &[u8] = b"RST\r";
 
 pub static CANDIDATES: &[ProbeCandidate] = &[
-    // -- Direct value commands (CR-terminated) --
+    // -- Lane-prefixed: CMD<lane> <secs>\r --
     ProbeCandidate {
-        label: "+5\\r",
-        bytes: b"+5\r",
+        label: "ADD1 5\\r",
+        bytes: b"ADD1 5\r",
     },
     ProbeCandidate {
-        label: "+10\\r",
-        bytes: b"+10\r",
+        label: "ADD1 10\\r",
+        bytes: b"ADD1 10\r",
     },
     ProbeCandidate {
-        label: "+15\\r",
-        bytes: b"+15\r",
+        label: "ADD1 15\\r",
+        bytes: b"ADD1 15\r",
     },
-    // -- ADD prefix --
+    // -- Spaced: CMD <lane> <secs>\r --
     ProbeCandidate {
-        label: "ADD5\\r",
-        bytes: b"ADD5\r",
-    },
-    ProbeCandidate {
-        label: "ADD10\\r",
-        bytes: b"ADD10\r",
+        label: "ADD 1 5\\r",
+        bytes: b"ADD 1 5\r",
     },
     ProbeCandidate {
-        label: "ADD15\\r",
+        label: "ADJ 1 5\\r",
+        bytes: b"ADJ 1 5\r",
+    },
+    ProbeCandidate {
+        label: "COR 1 5\\r",
+        bytes: b"COR 1 5\r",
+    },
+    ProbeCandidate {
+        label: "PEN 1 5\\r",
+        bytes: b"PEN 1 5\r",
+    },
+    // -- Lane after value: CMD <secs> <lane>\r --
+    ProbeCandidate {
+        label: "ADD 5 1\\r",
+        bytes: b"ADD 5 1\r",
+    },
+    ProbeCandidate {
+        label: "COR 5 1\\r",
+        bytes: b"COR 5 1\r",
+    },
+    ProbeCandidate {
+        label: "PEN 5 1\\r",
+        bytes: b"PEN 5 1\r",
+    },
+    // -- Zero-padded seconds --
+    ProbeCandidate {
+        label: "ADD 1 05\\r",
+        bytes: b"ADD 1 05\r",
+    },
+    ProbeCandidate {
+        label: "COR 1 05\\r",
+        bytes: b"COR 1 05\r",
+    },
+    // -- Compact: CMD<lane><secs>\r (no spaces) --
+    ProbeCandidate {
+        label: "ADD15\\r (L1 5s)",
         bytes: b"ADD15\r",
     },
-    // -- T prefix (Time) --
     ProbeCandidate {
-        label: "T+5\\r",
-        bytes: b"T+5\r",
+        label: "COR15\\r (L1 5s)",
+        bytes: b"COR15\r",
     },
     ProbeCandidate {
-        label: "T+10\\r",
-        bytes: b"T+10\r",
+        label: "PEN15\\r (L1 5s)",
+        bytes: b"PEN15\r",
+    },
+    // -- Millisecond values --
+    ProbeCandidate {
+        label: "ADD 1 5000\\r",
+        bytes: b"ADD 1 5000\r",
     },
     ProbeCandidate {
-        label: "T+15\\r",
-        bytes: b"T+15\r",
+        label: "COR 1 5000\\r",
+        bytes: b"COR 1 5000\r",
     },
-    // -- ADJ prefix (Adjust) --
+    // -- CRLF terminators --
     ProbeCandidate {
-        label: "ADJ5\\r",
-        bytes: b"ADJ5\r",
-    },
-    ProbeCandidate {
-        label: "ADJ10\\r",
-        bytes: b"ADJ10\r",
+        label: "ADD 1 5\\r\\n",
+        bytes: b"ADD 1 5\r\n",
     },
     ProbeCandidate {
-        label: "ADJ15\\r",
-        bytes: b"ADJ15\r",
+        label: "COR 1 5\\r\\n",
+        bytes: b"COR 1 5\r\n",
     },
-    // -- Protocol-style (RW: header + time bytes, LE u16 ms) --
-    // 5000ms = 0x1388 -> bytes 0x88 0x13
+    // -- Bare commands (might toggle/prompt a mode) --
     ProbeCandidate {
-        label: "RW:01 5000ms LE",
-        bytes: &[0x52, 0x57, 0x3A, 0x01, 0x88, 0x13],
-    },
-    // 10000ms = 0x2710 -> bytes 0x10 0x27
-    ProbeCandidate {
-        label: "RW:01 10000ms LE",
-        bytes: &[0x52, 0x57, 0x3A, 0x01, 0x10, 0x27],
-    },
-    // 15000ms = 0x3A98 -> bytes 0x98 0x3A
-    ProbeCandidate {
-        label: "RW:01 15000ms LE",
-        bytes: &[0x52, 0x57, 0x3A, 0x01, 0x98, 0x3A],
-    },
-    // -- Single-value exploration --
-    ProbeCandidate {
-        label: "SET\\r",
-        bytes: b"SET\r",
+        label: "PEN\\r",
+        bytes: b"PEN\r",
     },
     ProbeCandidate {
-        label: "TIME\\r",
-        bytes: b"TIME\r",
+        label: "COR\\r",
+        bytes: b"COR\r",
     },
     ProbeCandidate {
-        label: "INC\\r",
-        bytes: b"INC\r",
+        label: "PLS\\r",
+        bytes: b"PLS\r",
     },
     ProbeCandidate {
-        label: "ADJ\\r",
-        bytes: b"ADJ\r",
+        label: "MOD\\r",
+        bytes: b"MOD\r",
+    },
+    // -- Protocol-style with lane byte + time LE u16 --
+    // RW: + version(01) + lane(01) + 5000ms LE (88 13)
+    ProbeCandidate {
+        label: "RW:01 L1 5000ms",
+        bytes: &[0x52, 0x57, 0x3A, 0x01, 0x01, 0x88, 0x13],
+    },
+    // RW: + version(01) + lane(01) + 5000ms LE + CR
+    ProbeCandidate {
+        label: "RW:01 L1 5s +CR",
+        bytes: &[0x52, 0x57, 0x3A, 0x01, 0x01, 0x88, 0x13, 0x0D],
     },
 ];
