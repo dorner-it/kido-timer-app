@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::time::Instant;
 
-use crate::probe::CANDIDATES;
+use crate::probe::{CANDIDATES, RESET_CMD};
 use crate::protocol::{
     ChannelStatus, DeviceMode, StateFlag, TimeChannel, TimerFrame, NUM_CHANNELS,
 };
@@ -16,6 +16,8 @@ pub struct ProbeLogEntry {
     pub device_mode_before: DeviceMode,
     pub device_mode_after: Option<DeviceMode>,
     pub frame_count_before: u64,
+    pub channel_times_before: [u16; NUM_CHANNELS],
+    pub channel_times_after: Option<[u16; NUM_CHANNELS]>,
 }
 
 pub struct App {
@@ -74,6 +76,13 @@ impl App {
         self.probe_write_port.is_some()
     }
 
+    /// Send the confirmed reset command (RST\r) to the device.
+    pub fn send_reset(&mut self) {
+        if let Some(ref mut port) = self.probe_write_port {
+            let _ = port.write_all(RESET_CMD);
+        }
+    }
+
     pub fn apply_event(&mut self, event: SerialEvent) {
         match event {
             SerialEvent::Frame(frame) => {
@@ -86,11 +95,13 @@ impl App {
                 self.frame_count += 1;
                 self.update_fps();
 
-                // Stamp device_mode_after on the most recent probe log entry
-                // (first frame received after a send)
+                // Stamp device_mode_after and channel_times_after on the most
+                // recent probe log entry (first frame received after a send)
                 if let Some(entry) = self.probe_log.last_mut() {
                     if entry.device_mode_after.is_none() {
                         entry.device_mode_after = Some(self.device_mode);
+                        let times = std::array::from_fn(|i| self.channels[i].time_ms);
+                        entry.channel_times_after = Some(times);
                     }
                 }
             }
@@ -120,6 +131,8 @@ impl App {
             false
         };
 
+        let channel_times_before = std::array::from_fn(|i| self.channels[i].time_ms);
+
         self.probe_log.push(ProbeLogEntry {
             label: candidate.label.to_string(),
             hex,
@@ -127,6 +140,8 @@ impl App {
             device_mode_before: self.device_mode,
             device_mode_after: None,
             frame_count_before: self.frame_count,
+            channel_times_before,
+            channel_times_after: None,
         });
     }
 

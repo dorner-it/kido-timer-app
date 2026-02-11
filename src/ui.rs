@@ -205,7 +205,7 @@ fn draw_probe_selector(f: &mut Frame, app: &App, area: Rect) {
     ];
 
     let title = format!(
-        " Probe [{}/{}] ",
+        " Time Adjust Probe [{}/{}] ",
         app.probe_index + 1,
         CANDIDATES.len()
     );
@@ -243,18 +243,15 @@ fn draw_probe_log(f: &mut Frame, app: &App, area: Rect) {
             let status = if entry.success { "OK" } else { "ERR" };
             let status_color = if entry.success { Color::Green } else { Color::Red };
 
-            let mode_before = format!("{}", entry.device_mode_before);
-            let mode_transition = match entry.device_mode_after {
-                Some(after) => {
-                    let after_str = format!("{}", after);
-                    if after_str == mode_before {
-                        mode_before.clone()
-                    } else {
-                        format!("{}->{}", mode_before, after_str)
-                    }
-                }
-                None => format!("{}->?", mode_before),
-            };
+            // Show channel time changes: find first active channel (non-zero before or after)
+            let time_info = format_time_change(
+                &entry.channel_times_before,
+                entry.channel_times_after.as_ref(),
+            );
+            let time_changed = entry.channel_times_after.map_or(false, |after| {
+                after != entry.channel_times_before
+            });
+            let time_color = if time_changed { Color::Yellow } else { Color::Gray };
 
             Line::from(vec![
                 Span::styled(
@@ -262,14 +259,14 @@ fn draw_probe_log(f: &mut Frame, app: &App, area: Rect) {
                     Style::default().fg(Color::DarkGray),
                 ),
                 Span::styled(
-                    format!("{:<14} ", entry.label),
+                    format!("{:<16} ", entry.label),
                     Style::default().fg(Color::White),
                 ),
                 Span::styled(
                     format!("{:<3} ", status),
                     Style::default().fg(status_color),
                 ),
-                Span::styled(mode_transition, Style::default().fg(Color::Gray)),
+                Span::styled(time_info, Style::default().fg(time_color)),
             ])
         })
         .collect();
@@ -288,6 +285,27 @@ fn draw_probe_log(f: &mut Frame, app: &App, area: Rect) {
 
     let paragraph = Paragraph::new(lines).block(block);
     f.render_widget(paragraph, area);
+}
+
+/// Format channel time changes for the probe log.
+/// Shows the first active channel's time before->after, or all zeros if idle.
+fn format_time_change(before: &[u16; 4], after: Option<&[u16; 4]>) -> String {
+    // Find first channel with non-zero time (before or after)
+    let active_ch = (0..4).find(|&i| {
+        before[i] > 0 || after.map_or(false, |a| a[i] > 0)
+    });
+
+    let fmt = |ms: u16| format!("{:02}.{:03}", ms / 1000, ms % 1000);
+
+    match (active_ch, after) {
+        (Some(ch), Some(a)) => {
+            format!("[{} -> {}]", fmt(before[ch]), fmt(a[ch]))
+        }
+        (Some(ch), None) => {
+            format!("[{} -> ?]", fmt(before[ch]))
+        }
+        (None, _) => "[00.000]".to_string(),
+    }
 }
 
 fn draw_raw_hex(f: &mut Frame, app: &App, area: Rect) {
@@ -344,6 +362,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     // Build help text based on available features
     let mut help_parts = Vec::new();
     if app.probe_available() {
+        help_parts.push("r=reset");
         help_parts.push("p=probe");
     }
     help_parts.push("q=quit");

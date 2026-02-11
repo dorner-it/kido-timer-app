@@ -103,6 +103,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                             app.running = false;
                         }
+                        // Direct reset (available when port connected, not in probe panel)
+                        KeyCode::Char('r') | KeyCode::Char('R')
+                            if app.probe_available() && !app.probe_active =>
+                        {
+                            app.send_reset();
+                        }
                         // Probe mode toggle
                         KeyCode::Char('p') | KeyCode::Char('P') if app.probe_available() => {
                             app.probe_active = !app.probe_active;
