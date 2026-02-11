@@ -1,9 +1,22 @@
+use std::io::Write;
 use std::time::Instant;
 
+use crate::probe::CANDIDATES;
 use crate::protocol::{
     ChannelStatus, DeviceMode, StateFlag, TimeChannel, TimerFrame, NUM_CHANNELS,
 };
 use crate::serial_reader::SerialEvent;
+
+/// A log entry recording one probe send attempt.
+#[allow(dead_code)]
+pub struct ProbeLogEntry {
+    pub label: String,
+    pub hex: String,
+    pub success: bool,
+    pub device_mode_before: DeviceMode,
+    pub device_mode_after: Option<DeviceMode>,
+    pub frame_count_before: u64,
+}
 
 pub struct App {
     pub latest_frame: Option<TimerFrame>,
@@ -20,10 +33,17 @@ pub struct App {
 
     // FPS tracking internals
     fps_timestamps: Vec<Instant>,
+
+    // Probe mode
+    pub probe_active: bool,
+    pub probe_index: usize,
+    pub probe_log: Vec<ProbeLogEntry>,
+    pub probe_write_port: Option<Box<dyn serialport::SerialPort>>,
+    pub probe_auto_running: bool,
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(write_port: Option<Box<dyn serialport::SerialPort>>) -> Self {
         Self {
             latest_frame: None,
             device_mode: DeviceMode::Standby,
@@ -40,7 +60,18 @@ impl App {
             running: true,
             frames_per_second: 0.0,
             fps_timestamps: Vec::new(),
+
+            probe_active: false,
+            probe_index: 0,
+            probe_log: Vec::new(),
+            probe_write_port: write_port,
+            probe_auto_running: false,
         }
+    }
+
+    /// Returns true if probe mode is available (serial write handle exists).
+    pub fn probe_available(&self) -> bool {
+        self.probe_write_port.is_some()
     }
 
     pub fn apply_event(&mut self, event: SerialEvent) {
@@ -54,6 +85,14 @@ impl App {
                 self.latest_frame = Some(frame);
                 self.frame_count += 1;
                 self.update_fps();
+
+                // Stamp device_mode_after on the most recent probe log entry
+                // (first frame received after a send)
+                if let Some(entry) = self.probe_log.last_mut() {
+                    if entry.device_mode_after.is_none() {
+                        entry.device_mode_after = Some(self.device_mode);
+                    }
+                }
             }
             SerialEvent::Error(msg) => {
                 self.error_count += 1;
@@ -62,6 +101,48 @@ impl App {
             SerialEvent::Disconnected => {
                 self.connected = false;
             }
+        }
+    }
+
+    /// Send the currently selected probe candidate to the device.
+    pub fn probe_send_current(&mut self) {
+        let candidate = &CANDIDATES[self.probe_index];
+        let hex = candidate
+            .bytes
+            .iter()
+            .map(|b| format!("{:02X}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let success = if let Some(ref mut port) = self.probe_write_port {
+            port.write_all(candidate.bytes).is_ok()
+        } else {
+            false
+        };
+
+        self.probe_log.push(ProbeLogEntry {
+            label: candidate.label.to_string(),
+            hex,
+            success,
+            device_mode_before: self.device_mode,
+            device_mode_after: None,
+            frame_count_before: self.frame_count,
+        });
+    }
+
+    /// Advance auto-send: send one candidate and move to the next.
+    /// Returns false when all candidates have been sent.
+    pub fn probe_auto_tick(&mut self) -> bool {
+        if !self.probe_auto_running {
+            return false;
+        }
+        self.probe_send_current();
+        if self.probe_index + 1 < CANDIDATES.len() {
+            self.probe_index += 1;
+            true
+        } else {
+            self.probe_auto_running = false;
+            false
         }
     }
 

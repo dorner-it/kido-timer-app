@@ -1,5 +1,6 @@
 mod app;
 mod file_reader;
+mod probe;
 mod protocol;
 mod serial_reader;
 mod ui;
@@ -18,6 +19,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 
 use app::App;
 use file_reader::spawn_file_reader;
+use probe::CANDIDATES;
 use serial_reader::spawn_serial_reader;
 
 #[derive(Parser)]
@@ -60,9 +62,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up channel for serial events
     let (tx, rx) = mpsc::channel();
 
-    // Spawn reader thread
-    let _reader_handle = if let Some(ref file_path) = cli.file {
-        spawn_file_reader(file_path, cli.speed, tx)
+    // Spawn reader thread and get optional write handle
+    let (_reader_handle, write_port) = if let Some(ref file_path) = cli.file {
+        (spawn_file_reader(file_path, cli.speed, tx), None)
     } else {
         spawn_serial_reader(cli.port.as_deref().unwrap(), cli.baud, tx)
     };
@@ -74,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new();
+    let mut app = App::new(write_port);
 
     // Main event loop (~30fps)
     let tick_rate = Duration::from_millis(33);
@@ -83,6 +85,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Drain all pending serial events
         while let Ok(event) = rx.try_recv() {
             app.apply_event(event);
+        }
+
+        // Auto-send probe tick (one candidate per tick when active)
+        if app.probe_auto_running {
+            app.probe_auto_tick();
         }
 
         // Render UI
@@ -95,6 +102,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match key.code {
                         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                             app.running = false;
+                        }
+                        // Probe mode toggle
+                        KeyCode::Char('p') | KeyCode::Char('P') if app.probe_available() => {
+                            app.probe_active = !app.probe_active;
+                            app.probe_auto_running = false;
+                        }
+                        // Probe candidate navigation
+                        KeyCode::Left | KeyCode::Up if app.probe_active => {
+                            if app.probe_index > 0 {
+                                app.probe_index -= 1;
+                            } else {
+                                app.probe_index = CANDIDATES.len() - 1;
+                            }
+                            app.probe_auto_running = false;
+                        }
+                        KeyCode::Right | KeyCode::Down if app.probe_active => {
+                            if app.probe_index + 1 < CANDIDATES.len() {
+                                app.probe_index += 1;
+                            } else {
+                                app.probe_index = 0;
+                            }
+                            app.probe_auto_running = false;
+                        }
+                        // Send current probe candidate
+                        KeyCode::Enter if app.probe_active => {
+                            app.probe_send_current();
+                        }
+                        // Auto-send all candidates
+                        KeyCode::Char('a') | KeyCode::Char('A') if app.probe_active => {
+                            app.probe_index = 0;
+                            app.probe_auto_running = true;
                         }
                         _ => {}
                     }

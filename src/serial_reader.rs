@@ -11,33 +11,42 @@ pub enum SerialEvent {
 }
 
 /// Spawn a thread that reads from the serial port, syncs frames, and sends parsed events.
+///
+/// Returns `(reader_thread, Option<write_port>)`. The write port is a cloned handle
+/// that can be used to send bytes to the device (e.g. for probe mode). On open failure
+/// the thread sends Error+Disconnected events and the write port is `None`.
 pub fn spawn_serial_reader(
     port_name: &str,
     baud_rate: u32,
     tx: Sender<SerialEvent>,
-) -> JoinHandle<()> {
+) -> (JoinHandle<()>, Option<Box<dyn serialport::SerialPort>>) {
     let port_name = port_name.to_string();
 
-    thread::spawn(move || {
-        let port = serialport::new(&port_name, baud_rate)
-            .data_bits(serialport::DataBits::Eight)
-            .parity(serialport::Parity::None)
-            .stop_bits(serialport::StopBits::One)
-            .timeout(Duration::from_millis(100))
-            .open();
+    // Open port on the main thread so we can clone a write handle
+    let port = serialport::new(&port_name, baud_rate)
+        .data_bits(serialport::DataBits::Eight)
+        .parity(serialport::Parity::None)
+        .stop_bits(serialport::StopBits::One)
+        .timeout(Duration::from_millis(100))
+        .open();
 
-        let mut port = match port {
-            Ok(p) => p,
-            Err(e) => {
-                let _ = tx.send(SerialEvent::Error(format!(
-                    "Failed to open {}: {}",
-                    port_name, e
-                )));
-                let _ = tx.send(SerialEvent::Disconnected);
-                return;
-            }
-        };
+    let mut port = match port {
+        Ok(p) => p,
+        Err(e) => {
+            let _ = tx.send(SerialEvent::Error(format!(
+                "Failed to open {}: {}",
+                port_name, e
+            )));
+            let _ = tx.send(SerialEvent::Disconnected);
+            let handle = thread::spawn(|| {});
+            return (handle, None);
+        }
+    };
 
+    // Clone write handle before moving port into reader thread
+    let write_port = port.try_clone().ok();
+
+    let handle = thread::spawn(move || {
         let mut buffer: Vec<u8> = Vec::with_capacity(256);
         let mut read_buf = [0u8; 128];
 
@@ -119,5 +128,7 @@ pub fn spawn_serial_reader(
                 buffer.drain(..keep_from);
             }
         }
-    })
+    });
+
+    (handle, write_port)
 }
