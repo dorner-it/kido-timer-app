@@ -125,16 +125,19 @@ fn draw_channels(f: &mut Frame, app: &App, area: Rect) {
     let areas = [top_cols[0], top_cols[1], bot_cols[0], bot_cols[1]];
 
     for (i, &channel_area) in areas.iter().enumerate() {
-        draw_channel_box(f, &app.channels[i], i + 1, channel_area);
+        draw_channel_box(f, app, i, channel_area);
     }
 }
 
-fn draw_channel_box(f: &mut Frame, ch: &crate::protocol::TimeChannel, num: usize, area: Rect) {
+fn draw_channel_box(f: &mut Frame, app: &App, index: usize, area: Rect) {
+    let ch = app.corrected_channel(index);
     let color = status_color(ch.status);
     let time_str = ch.format_time();
     let status_str = format!("{}", ch.status);
+    let selected = app.selected_channel == Some(index);
+    let correction = app.correction_ms[index];
 
-    let lines = vec![
+    let mut lines = vec![
         Line::from(""),
         Line::from(Span::styled(
             format!("   {}", time_str),
@@ -148,11 +151,28 @@ fn draw_channel_box(f: &mut Frame, ch: &crate::protocol::TimeChannel, num: usize
         )),
     ];
 
+    // Show correction indicator if non-zero
+    if correction != 0 {
+        let sign = if correction > 0 { "+" } else { "" };
+        let secs = correction.abs() / 1000;
+        let millis = correction.abs() % 1000;
+        lines.push(Line::from(Span::styled(
+            format!("   {}{:02}.{:03}s", sign, secs, millis),
+            Style::default().fg(Color::Yellow),
+        )));
+    }
+
+    let border_style = if selected {
+        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(color)
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(format!(" Channel {} ", num))
+        .title(format!(" Channel {} ", index + 1))
         .title_style(Style::default().fg(color).add_modifier(Modifier::BOLD))
-        .border_style(Style::default().fg(color));
+        .border_style(border_style);
 
     let paragraph = Paragraph::new(lines).block(block);
     f.render_widget(paragraph, area);
@@ -360,7 +380,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     ];
 
     // Build help text based on available features
-    let mut help_parts = Vec::new();
+    let mut help_parts = vec!["1-4=ch", "+/-=5s", "c=clear"];
     if app.probe_available() {
         help_parts.push("r=reset");
         help_parts.push("p=probe");

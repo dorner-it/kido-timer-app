@@ -36,6 +36,10 @@ pub struct App {
     // FPS tracking internals
     fps_timestamps: Vec<Instant>,
 
+    // Software time correction
+    pub selected_channel: Option<usize>,       // 0-3 index, None = no selection
+    pub correction_ms: [i32; NUM_CHANNELS],    // per-channel correction in ms
+
     // Probe mode
     pub probe_active: bool,
     pub probe_index: usize,
@@ -62,6 +66,9 @@ impl App {
             running: true,
             frames_per_second: 0.0,
             fps_timestamps: Vec::new(),
+
+            selected_channel: None,
+            correction_ms: [0; NUM_CHANNELS],
 
             probe_active: false,
             probe_index: 0,
@@ -158,6 +165,30 @@ impl App {
         } else {
             self.probe_auto_running = false;
             false
+        }
+    }
+
+    /// Return a copy of the channel with software time correction applied.
+    pub fn corrected_channel(&self, index: usize) -> TimeChannel {
+        let mut ch = self.channels[index];
+        if ch.status != ChannelStatus::Inactive && self.correction_ms[index] != 0 {
+            let corrected = (ch.time_ms as i32 + self.correction_ms[index]).clamp(0, u16::MAX as i32);
+            ch.time_ms = corrected as u16;
+        }
+        ch
+    }
+
+    /// Adjust the correction for the currently selected channel.
+    pub fn adjust_selected(&mut self, delta_ms: i32) {
+        if let Some(ch) = self.selected_channel {
+            self.correction_ms[ch] += delta_ms;
+        }
+    }
+
+    /// Clear the correction for the currently selected channel.
+    pub fn clear_selected_correction(&mut self) {
+        if let Some(ch) = self.selected_channel {
+            self.correction_ms[ch] = 0;
         }
     }
 

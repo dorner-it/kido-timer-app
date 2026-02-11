@@ -103,6 +103,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                             app.running = false;
                         }
+                        // Channel selection (1-4)
+                        KeyCode::Char('1') if !app.probe_active => app.selected_channel = Some(0),
+                        KeyCode::Char('2') if !app.probe_active => app.selected_channel = Some(1),
+                        KeyCode::Char('3') if !app.probe_active => app.selected_channel = Some(2),
+                        KeyCode::Char('4') if !app.probe_active => app.selected_channel = Some(3),
+
+                        // Time correction: + adds 5s, - subtracts 5s
+                        KeyCode::Char('+') | KeyCode::Char('=') if !app.probe_active => {
+                            app.adjust_selected(5000);
+                        }
+                        KeyCode::Char('-') if !app.probe_active => {
+                            app.adjust_selected(-5000);
+                        }
+
+                        // Clear correction for selected channel
+                        KeyCode::Char('c') if !app.probe_active => {
+                            app.clear_selected_correction();
+                        }
+
                         // Direct reset (available when port connected, not in probe panel)
                         KeyCode::Char('r') | KeyCode::Char('R')
                             if app.probe_available() && !app.probe_active =>
