@@ -151,19 +151,6 @@ pub struct TimeChannel {
     pub status: ChannelStatus,
 }
 
-impl TimeChannel {
-    /// Format the time as `"SS.mmm"` (e.g., `"03.620"`).
-    /// Returns `"---.---"` if the channel is inactive.
-    pub fn format_time(&self) -> String {
-        if self.status == ChannelStatus::Inactive {
-            return "---.---".to_string();
-        }
-        let secs = self.time_ms / 1000;
-        let millis = self.time_ms % 1000;
-        format!("{:02}.{:03}", secs, millis)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimerFrame {
     pub version: u8,
@@ -384,24 +371,6 @@ mod tests {
         );
         let parsed = parse_frame(&frame).unwrap();
         assert_eq!(parsed.state_flag, StateFlag::Armed);
-    }
-
-    #[test]
-    fn test_format_time_active() {
-        let ch = TimeChannel { time_ms: 3620, status: ChannelStatus::Confirmed };
-        assert_eq!(ch.format_time(), "03.620");
-
-        let ch2 = TimeChannel { time_ms: 35020, status: ChannelStatus::Confirmed };
-        assert_eq!(ch2.format_time(), "35.020");
-
-        let ch3 = TimeChannel { time_ms: 100, status: ChannelStatus::Running };
-        assert_eq!(ch3.format_time(), "00.100");
-    }
-
-    #[test]
-    fn test_format_time_inactive() {
-        let ch = TimeChannel { time_ms: 0, status: ChannelStatus::Inactive };
-        assert_eq!(ch.format_time(), "---.---");
     }
 
     #[test]
