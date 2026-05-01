@@ -118,6 +118,19 @@ export const t = {
     needDesktopApp: "Diese Aktion benötigt die Desktop-App",
   },
 
+  updates: {
+    available: "Update verfügbar",
+    versionPrefix: "Version",
+    installNow: "Jetzt installieren",
+    later: "Später",
+    downloading: "Wird heruntergeladen…",
+    installing: "Installation läuft, App startet neu…",
+    failed: "Update fehlgeschlagen",
+    checkNow: "Auf Updates prüfen",
+    checking: "Suche nach Updates…",
+    upToDate: "App ist auf dem neuesten Stand",
+  },
+
   csv: {
     headers: [
       "Lauf",

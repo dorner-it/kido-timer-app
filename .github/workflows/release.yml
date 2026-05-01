@@ -60,6 +60,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'TRV Timer ${{ github.ref_name }}'
@@ -68,11 +70,14 @@ jobs:
 
             * `*-setup.exe` — NSIS installer (empfohlen)
             * `*.msi` — MSI-Paket (für Gruppenrichtlinien-Verteilung)
+            * `latest.json` — Manifest für die automatische Update-Funktion
 
             Beim ersten Start wird, falls nötig, automatisch Microsoft WebView2
-            heruntergeladen und installiert.
+            heruntergeladen und installiert. Bereits installierte Versionen
+            erkennen dieses Release automatisch und bieten ein Update an.
           releaseDraft: true
           prerelease: false
-          args: --target x86_64-pc-windows-msvc --bundles msi,nsis
+          includeUpdaterJson: true
+          args: --target x86_64-pc-windows-msvc
           projectPath: '.'
           tauriScript: 'npx tauri'

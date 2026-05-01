@@ -28,9 +28,18 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/dorner-it/trv-app/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgxODEwRkMzRjk3NzJBOTUKUldTVktuZjV3dytCZ1NVbVFrK0MxZmdJMWM4ZU1rSkhCUC8rb1JDd0xiSzVFQlZhRTdoN0tvaUwK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

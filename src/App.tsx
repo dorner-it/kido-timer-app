@@ -5,7 +5,9 @@ import { Drawer } from "./components/Drawer";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { SetupModal } from "./components/SetupModal";
 import { ProtocolView } from "./components/ProtocolView";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { useConnection } from "./lib/useConnection";
+import { useUpdater } from "./lib/useUpdater";
 import { loadSettings, patchSettings, type AppSettings, type Theme } from "./lib/persistence";
 import { t } from "./lib/i18n";
 
@@ -22,6 +24,7 @@ export default function App() {
 
   const conn = useConnection();
   const corrections = conn.state.corrections;
+  const updater = useUpdater();
 
   // Apply the chosen theme to <html> so CSS variables flip.
   useEffect(() => {
@@ -186,6 +189,12 @@ export default function App() {
       />
 
       <ErrorBanner message={conn.state.error} onDismiss={conn.clearError} />
+
+      <UpdateBanner
+        state={updater.state}
+        onInstall={updater.install}
+        onDismiss={updater.dismiss}
+      />
     </div>
   );
 }
