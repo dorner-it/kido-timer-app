@@ -24,5 +24,5 @@ pub fn run() {
             commands::write_text_file,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running TRV Timer");
+        .expect("error while running KiDo-Timer");
 }

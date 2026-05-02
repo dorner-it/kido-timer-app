@@ -1,6 +1,6 @@
-# TRV Timer — Sports Timer Console
+# KiDo-Timer — Sports Timer Console
 
-A desktop console for the **TRV Kocab Sports Timer**, built with **Tauri 2** + **React + TypeScript + Tailwind**.
+A desktop console for the **KiDo-Timer**, built with **Tauri 2** + **React + TypeScript + Tailwind**.
 Connects directly to the timer over a serial port, parses the proprietary 41-byte frame protocol, and presents
 a coach/operator workstation with four lane channels, software time correction, a confirmed-split run log, and
 demo replay of captured hex dumps.
@@ -9,7 +9,7 @@ The app is a single self-contained Windows executable. There are no network depe
 
 ## Features
 
-- **Live serial connection** to the TRV Kocab timer at 9600 baud (8N1) — port and baud rate selected from the UI.
+- **Live serial connection** to the KiDo-Timer at 9600 baud (8N1) — port and baud rate selected from the UI.
 - **Four-lane dashboard** with status-color glow (idle / running / captured / confirmed) and large tabular-numeric times.
 - **Per-channel software corrections** in ±1 s and ±5 s steps, with live preview and clear.
 - **Run log** of every confirmed split (lane + time + correction + timestamp).
@@ -22,7 +22,7 @@ The app is a single self-contained Windows executable. There are no network depe
 ## Project layout
 
 ```
-trv-app/
+kido-timer-app/
 ├── src/                 # React frontend (Vite + TS + Tailwind)
 │   ├── components/      # TopBar, LaneGrid, LaneCard, ConnectionPanel, ActionPanel, RunHistory, ErrorBanner
 │   ├── lib/             # Tauri bindings, types, useConnection hook, dev simulator
@@ -88,7 +88,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## Protocol
 
-The TRV Kocab Sports Timer transmits fixed **41-byte frames** at 9600 baud (8N1):
+The KiDo-Timer transmits fixed **41-byte frames** at 9600 baud (8N1):
 
 ```
 Offset  Size  Description

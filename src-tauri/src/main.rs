@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    trv_app_lib::run()
+    kido_timer_lib::run()
 }

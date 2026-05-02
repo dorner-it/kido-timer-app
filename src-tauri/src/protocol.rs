@@ -1,4 +1,4 @@
-/// TRV Kocab Sports Timer serial protocol parser.
+/// KiDo-Timer serial protocol parser.
 ///
 /// The device sends fixed 41-byte frames at 9600 baud (8N1).
 ///

@@ -3,9 +3,9 @@ import type { ChannelStatus, DeviceMode, StateFlag } from "./types";
 /** Central German UI strings. All visible text in the app comes from here. */
 export const t = {
   app: {
-    brand: "TRV·Kocab",
+    brand: "KiDo·Timer",
     subtitle: "Sportzeit-Konsole",
-    title: "TRV Kocab Sportzeitmessung",
+    title: "KiDo-Timer Sportzeitmessung",
   },
 
   topbar: {
@@ -30,7 +30,7 @@ export const t = {
   setup: {
     welcomeTitle: "Willkommen",
     welcomeBody:
-      "Wähle den Anschluss zu deiner TRV Kocab Sportzeituhr oder starte den Demo-Modus mit einer aufgezeichneten Datei.",
+      "Wähle den Anschluss zu deiner KiDo-Timer Sportzeituhr oder starte den Demo-Modus mit einer aufgezeichneten Datei.",
     tabSerial: "Sportzeituhr",
     tabDemo: "Demo-Wiedergabe",
     serialPort: "Anschluss",

@@ -100,7 +100,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 function BrandMark() {
   return (
     <div className="relative grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-signal to-status-captured shadow-[0_8px_24px_-8px_rgba(255,77,46,0.7)]">
-      <span className="font-stencil text-[18px] font-bold leading-none text-ink-900">TRV</span>
+      <span className="font-stencil text-[18px] font-bold leading-none text-ink-900">KiDo</span>
       <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-status-confirmed ring-2 ring-ink-900" />
     </div>
   );

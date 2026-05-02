@@ -55,5 +55,5 @@ export function entriesToCsv(entries: RunEntry[]): string {
 
 export function defaultCsvFilename(now: Date = new Date()): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
-  return `TRV_Protokoll_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.csv`;
+  return `KiDo_Protokoll_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.csv`;
 }

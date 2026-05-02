@@ -3,7 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import type { ConnectionEvent } from "./types";
 
-export const TRV_EVENT = "trv://event";
+export const KIDO_EVENT = "kido://event";
 
 /**
  * True when running inside the Tauri webview. Outside of Tauri (plain browser
@@ -63,7 +63,7 @@ export async function listenConnectionEvents(
   handler: (event: ConnectionEvent) => void,
 ): Promise<UnlistenFn> {
   if (!IS_TAURI) return () => {};
-  return listen<ConnectionEvent>(TRV_EVENT, (e) => handler(e.payload));
+  return listen<ConnectionEvent>(KIDO_EVENT, (e) => handler(e.payload));
 }
 
 /**

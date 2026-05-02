@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TRV Timer",
+  "productName": "KiDo-Timer",
   "version": "0.1.0",
-  "identifier": "de.dorner-it.trv-timer",
+  "identifier": "de.dorner-it.kido-timer",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "TRV Kocab Sportzeitmessung",
+        "title": "KiDo-Timer Sportzeitmessung",
         "width": 1440,
         "height": 900,
         "minWidth": 1100,
@@ -31,7 +31,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/dorner-it/trv-app/releases/latest/download/latest.json"
+        "https://github.com/dorner-it/kido-timer-app/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgxODEwRkMzRjk3NzJBOTUKUldTVktuZjV3dytCZ1NVbVFrK0MxZmdJMWM4ZU1rSkhCUC8rb1JDd0xiSzVFQlZhRTdoN0tvaUwK"
     }

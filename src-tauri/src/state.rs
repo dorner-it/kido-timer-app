@@ -75,7 +75,7 @@ impl AppState {
 
         // Emit connected immediately so the UI updates.
         let _ = app_handle.emit(
-            "trv://event",
+            "kido://event",
             ConnectionEvent::Connected {
                 source: source.clone(),
             },
@@ -112,7 +112,7 @@ impl AppState {
         spawn_event_bridge(app_handle.clone(), rx);
 
         let _ = app_handle.emit(
-            "trv://event",
+            "kido://event",
             ConnectionEvent::Connected {
                 source: source.clone(),
             },
@@ -149,7 +149,7 @@ fn spawn_event_bridge(app_handle: AppHandle, rx: mpsc::Receiver<SerialEvent>) {
                 SerialEvent::Disconnected => ConnectionEvent::Disconnected,
             };
             let is_terminal = matches!(payload, ConnectionEvent::Disconnected);
-            let _ = app_handle.emit("trv://event", payload);
+            let _ = app_handle.emit("kido://event", payload);
             if is_terminal {
                 break;
             }

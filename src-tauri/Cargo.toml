@@ -1,12 +1,12 @@
 [package]
-name = "trv-app"
+name = "kido-timer-app"
 version = "0.1.0"
 edition = "2021"
-description = "TRV Kocab Sports Timer dashboard"
+description = "KiDo-Timer dashboard"
 authors = ["Drewis Dorner"]
 
 [lib]
-name = "trv_app_lib"
+name = "kido_timer_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

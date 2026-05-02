@@ -18,7 +18,7 @@ export interface AppSettings {
   theme: Theme;
 }
 
-const STORAGE_KEY = "trv-app:settings:v1";
+const STORAGE_KEY = "kido-timer:settings:v1";
 
 const DEFAULT_SETTINGS: AppSettings = {
   port: null,
