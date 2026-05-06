@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { t } from "../lib/i18n";
 import type { Theme } from "../lib/persistence";
 import type { ConnectionStatus } from "../lib/types";
+import type { CloudIdentity, CompetitionPayload, FailedPost } from "../lib/cloudTypes";
+import { CloudSection } from "./CloudSection";
 
 interface Props {
   open: boolean;
@@ -14,6 +16,20 @@ interface Props {
   onDisconnect: () => void;
   onReset: () => void;
   onOpenProtocol: () => void;
+  cloudIdentity: CloudIdentity | null;
+  cloudSnapshot: CompetitionPayload | null;
+  cloudLoading: boolean;
+  cloudResultMessage: string | null;
+  cloudFailedPosts: FailedPost[];
+  onCloudPair: () => void;
+  onCloudUnpair: () => Promise<void>;
+  onCloudPickCompetition: () => void;
+  onCloudDeselect: () => Promise<void>;
+  onCloudOpenKido: () => Promise<void>;
+  onCloudExportKido: () => Promise<string | null>;
+  onCloudDismissResultMessage: () => void;
+  onCloudRetryFailed: (runId: string) => Promise<void>;
+  onCloudDismissFailed: (runId: string) => Promise<void>;
 }
 
 export function Drawer({
@@ -27,6 +43,20 @@ export function Drawer({
   onDisconnect,
   onReset,
   onOpenProtocol,
+  cloudIdentity,
+  cloudSnapshot,
+  cloudLoading,
+  cloudResultMessage,
+  cloudFailedPosts,
+  onCloudPair,
+  onCloudUnpair,
+  onCloudPickCompetition,
+  onCloudDeselect,
+  onCloudOpenKido,
+  onCloudExportKido,
+  onCloudDismissResultMessage,
+  onCloudRetryFailed,
+  onCloudDismissFailed,
 }: Props) {
   const isConnected = status === "connected";
 
@@ -102,6 +132,26 @@ export function Drawer({
           {/* Gerät */}
           <Section title={t.drawer.sectionDevice}>
             <ResetAction disabled={!isConnected} onReset={onReset} />
+          </Section>
+
+          {/* Online-Verbindung */}
+          <Section title={t.drawer.sectionCloud}>
+            <CloudSection
+              identity={cloudIdentity}
+              snapshot={cloudSnapshot}
+              loading={cloudLoading}
+              resultMessage={cloudResultMessage}
+              failedPosts={cloudFailedPosts}
+              onPair={onCloudPair}
+              onUnpair={onCloudUnpair}
+              onPickCompetition={onCloudPickCompetition}
+              onDeselect={onCloudDeselect}
+              onOpenKido={onCloudOpenKido}
+              onExportKido={onCloudExportKido}
+              onDismissResultMessage={onCloudDismissResultMessage}
+              onRetryFailed={onCloudRetryFailed}
+              onDismissFailed={onCloudDismissFailed}
+            />
           </Section>
 
           {/* Ansicht */}

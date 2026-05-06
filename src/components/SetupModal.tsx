@@ -1,23 +1,36 @@
 import { useEffect, useState } from "react";
 import { listSerialPorts, pickHexDumpFile } from "../lib/tauri";
 import type { AppSettings } from "../lib/persistence";
+import type { CloudIdentity } from "../lib/cloudTypes";
 import { t } from "../lib/i18n";
 
 interface Props {
   open: boolean;
   initial: AppSettings;
+  cloudIdentity: CloudIdentity | null;
   onCancel?: () => void;
-  onConfirm: (next: AppSettings, mode: "serial" | "demo") => void;
+  onConfirm: (next: AppSettings, mode: "serial" | "demo" | "cloud") => void;
+  onPair: (baseUrl: string, apiKey: string) => Promise<void>;
   /** When true, the cancel button is hidden (first-launch / required setup). */
   required?: boolean;
 }
 
 const COMMON_BAUDS = [9600, 19200, 38400, 57600, 115200];
 
-type Tab = "serial" | "demo";
+type Tab = "serial" | "demo" | "cloud";
 
-export function SetupModal({ open, initial, onCancel, onConfirm, required }: Props) {
-  const [tab, setTab] = useState<Tab>(initial.demoPath && !initial.port ? "demo" : "serial");
+export function SetupModal({
+  open,
+  initial,
+  cloudIdentity,
+  onCancel,
+  onConfirm,
+  onPair,
+  required,
+}: Props) {
+  const [tab, setTab] = useState<Tab>(
+    initial.demoPath && !initial.port ? "demo" : "serial",
+  );
   const [ports, setPorts] = useState<string[]>([]);
   const [scanning, setScanning] = useState(false);
   const [port, setPort] = useState<string | null>(initial.port);
@@ -25,6 +38,11 @@ export function SetupModal({ open, initial, onCancel, onConfirm, required }: Pro
   const [autoConnect, setAutoConnect] = useState<boolean>(initial.autoConnect);
   const [demoPath, setDemoPath] = useState<string | null>(initial.demoPath);
   const [demoSpeed, setDemoSpeed] = useState<number>(initial.demoSpeed);
+
+  const [cloudBaseUrl, setCloudBaseUrl] = useState<string>(initial.cloudBaseUrl);
+  const [cloudApiKey, setCloudApiKey] = useState("");
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudError, setCloudError] = useState<string | null>(null);
 
   // Refresh port list whenever the modal opens
   const refresh = async () => {
@@ -39,7 +57,12 @@ export function SetupModal({ open, initial, onCancel, onConfirm, required }: Pro
   };
 
   useEffect(() => {
-    if (open) refresh();
+    if (open) {
+      refresh();
+      setCloudBaseUrl(initial.cloudBaseUrl);
+      setCloudApiKey("");
+      setCloudError(null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -53,21 +76,37 @@ export function SetupModal({ open, initial, onCancel, onConfirm, required }: Pro
       autoConnect,
       demoPath: tab === "demo" ? demoPath : initial.demoPath,
       demoSpeed,
+      cloudBaseUrl: tab === "cloud" ? cloudBaseUrl : initial.cloudBaseUrl,
       hasCompletedSetup: true,
     };
     onConfirm(next, tab);
   };
 
+  const handlePair = async () => {
+    setCloudBusy(true);
+    setCloudError(null);
+    try {
+      await onPair(cloudBaseUrl.trim(), cloudApiKey.trim());
+      handleConfirm();
+    } catch (e) {
+      setCloudError(String(e));
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
   const canConfirmSerial = tab === "serial" && !!port;
   const canConfirmDemo = tab === "demo" && !!demoPath;
-  const canConfirm = canConfirmSerial || canConfirmDemo;
+  const canConfirmCloud =
+    tab === "cloud" && !!cloudBaseUrl && (!!cloudIdentity || !!cloudApiKey);
+  const canConfirm = canConfirmSerial || canConfirmDemo || canConfirmCloud;
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center px-6">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-ink-900/85 backdrop-blur-md"
-        onClick={() => !required && onCancel?.()}
+        onClick={() => !required && !cloudBusy && onCancel?.()}
       />
       {/* Dialog */}
       <div className="relative z-10 w-full max-w-[640px] surface overflow-hidden">
@@ -88,6 +127,9 @@ export function SetupModal({ open, initial, onCancel, onConfirm, required }: Pro
           </TabButton>
           <TabButton active={tab === "demo"} onClick={() => setTab("demo")}>
             ▶ {t.setup.tabDemo}
+          </TabButton>
+          <TabButton active={tab === "cloud"} onClick={() => setTab("cloud")}>
+            ☁ {t.setup.tabCloud}
           </TabButton>
         </nav>
 
@@ -138,7 +180,7 @@ export function SetupModal({ open, initial, onCancel, onConfirm, required }: Pro
                 </div>
               </div>
             </div>
-          ) : (
+          ) : tab === "demo" ? (
             <div className="flex flex-col gap-5">
               <div className="field">
                 <label className="label">{t.setup.pickFile}</label>
@@ -172,36 +214,135 @@ export function SetupModal({ open, initial, onCancel, onConfirm, required }: Pro
                 </div>
               </div>
             </div>
+          ) : (
+            <CloudTab
+              identity={cloudIdentity}
+              baseUrl={cloudBaseUrl}
+              setBaseUrl={setCloudBaseUrl}
+              apiKey={cloudApiKey}
+              setApiKey={setCloudApiKey}
+              busy={cloudBusy}
+              error={cloudError}
+            />
           )}
 
-          <label className="mt-5 flex items-center gap-3 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={autoConnect}
-              onChange={(e) => setAutoConnect(e.target.checked)}
-              className="h-4 w-4 accent-signal"
-            />
-            <span className="font-mono text-[12px] text-ink-100">
-              {t.setup.rememberLabel}
-            </span>
-          </label>
+          {tab !== "cloud" && (
+            <label className="mt-5 flex items-center gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoConnect}
+                onChange={(e) => setAutoConnect(e.target.checked)}
+                className="h-4 w-4 accent-signal"
+              />
+              <span className="font-mono text-[12px] text-ink-100">
+                {t.setup.rememberLabel}
+              </span>
+            </label>
+          )}
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-ink-50/[0.05] bg-ink-900/40 px-7 py-4">
           {!required && (
-            <button className="btn" onClick={onCancel}>
+            <button className="btn" onClick={onCancel} disabled={cloudBusy}>
               {t.setup.cancel}
             </button>
           )}
-          <button
-            className="btn btn-primary"
-            disabled={!canConfirm}
-            onClick={handleConfirm}
-          >
-            {tab === "demo" ? t.setup.startDemo : t.setup.saveAndConnect}
-          </button>
+          {tab === "cloud" ? (
+            <button
+              className="btn btn-primary"
+              disabled={!canConfirmCloud || cloudBusy}
+              onClick={cloudIdentity && !cloudApiKey ? handleConfirm : handlePair}
+            >
+              {cloudBusy
+                ? t.cloud.pairing
+                : cloudIdentity && !cloudApiKey
+                  ? t.setup.cloudFinish
+                  : t.cloud.pairAction}
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary"
+              disabled={!canConfirm}
+              onClick={handleConfirm}
+            >
+              {tab === "demo" ? t.setup.startDemo : t.setup.saveAndConnect}
+            </button>
+          )}
         </footer>
       </div>
+    </div>
+  );
+}
+
+function CloudTab({
+  identity,
+  baseUrl,
+  setBaseUrl,
+  apiKey,
+  setApiKey,
+  busy,
+  error,
+}: {
+  identity: CloudIdentity | null;
+  baseUrl: string;
+  setBaseUrl: (v: string) => void;
+  apiKey: string;
+  setApiKey: (v: string) => void;
+  busy: boolean;
+  error: string | null;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      {identity && (
+        <div className="rounded-xl border border-signal/30 bg-signal/5 p-4">
+          <span className="label">{t.cloud.pairedAs}</span>
+          <p className="mt-1 font-display text-[13px] text-ink-50">
+            {identity.displayName || identity.email}
+          </p>
+          <p className="mt-0.5 font-mono text-[11px] text-ink-200/70">
+            {identity.email}
+          </p>
+          <p className="mt-2 font-mono text-[10px] text-ink-200/60">
+            {t.setup.cloudPaired}
+          </p>
+        </div>
+      )}
+
+      <p className="font-mono text-[11px] leading-relaxed text-ink-200/80">
+        {t.cloud.pairBody}
+      </p>
+
+      <div className="field">
+        <label className="label">{t.cloud.baseUrlLabel}</label>
+        <input
+          type="url"
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          spellCheck={false}
+          className="input font-mono text-[12px]"
+          disabled={busy}
+        />
+      </div>
+      <div className="field">
+        <label className="label">
+          {identity ? t.cloud.rePair : t.cloud.apiKeyLabel}
+        </label>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          spellCheck={false}
+          placeholder={t.cloud.apiKeyPlaceholder}
+          className="input font-mono text-[12px]"
+          disabled={busy}
+        />
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-status-unknown/40 bg-status-unknown/5 px-3 py-2 font-mono text-[11px] text-status-unknown">
+          {error}
+        </div>
+      )}
     </div>
   );
 }

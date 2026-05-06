@@ -16,6 +16,8 @@ export interface AppSettings {
   hasCompletedSetup: boolean;
   /** UI theme. Default: light. */
   theme: Theme;
+  /** Base URL of the kido-timer-web API (overridable per install). */
+  cloudBaseUrl: string;
 }
 
 const STORAGE_KEY = "kido-timer:settings:v1";
@@ -28,6 +30,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   demoSpeed: 1,
   hasCompletedSetup: false,
   theme: "light",
+  cloudBaseUrl: "https://idr9teznt4.execute-api.eu-central-1.amazonaws.com",
 };
 
 export function loadSettings(): AppSettings {

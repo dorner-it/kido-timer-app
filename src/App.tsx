@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TopBar } from "./components/TopBar";
 import { LaneGrid } from "./components/LaneGrid";
 import { Drawer } from "./components/Drawer";
@@ -6,12 +6,22 @@ import { ErrorBanner } from "./components/ErrorBanner";
 import { SetupModal } from "./components/SetupModal";
 import { ProtocolView } from "./components/ProtocolView";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { CloudPairingModal } from "./components/CloudPairingModal";
+import { CompetitionPicker } from "./components/CompetitionPicker";
+import { CompetitionBanner } from "./components/CompetitionBanner";
+import { LaneAssignmentPanel } from "./components/LaneAssignmentPanel";
+import { KidoConflictDialog } from "./components/KidoConflictDialog";
 import { useConnection } from "./lib/useConnection";
 import { useUpdater } from "./lib/useUpdater";
+import { useCloud } from "./lib/useCloud";
 import { loadSettings, patchSettings, type AppSettings, type Theme } from "./lib/persistence";
 import { t } from "./lib/i18n";
+import type { ChannelStatus, FrameDto } from "./lib/types";
+import type { KidoConflict } from "./lib/cloudTypes";
 
 type View = "lanes" | "protocol";
+
+const NUM_LANES = 4;
 
 export default function App() {
   const [selectedLane, setSelectedLane] = useState<number | null>(null);
@@ -21,10 +31,18 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [setupOpen, setSetupOpen] = useState<boolean>(() => !loadSettings().hasCompletedSetup);
   const [autoTried, setAutoTried] = useState(false);
+  const [pairingOpen, setPairingOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pendingKidoConflict, setPendingKidoConflict] = useState<{
+    path: string;
+    conflict: KidoConflict;
+  } | null>(null);
+  const [kidoConflictBusy, setKidoConflictBusy] = useState(false);
 
   const conn = useConnection();
   const corrections = conn.state.corrections;
   const updater = useUpdater();
+  const cloud = useCloud();
 
   // Apply the chosen theme to <html> so CSS variables flip.
   useEffect(() => {
@@ -68,6 +86,90 @@ export default function App() {
     [conn],
   );
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Live ingest: watch frame channel transitions and POST status changes
+  // (active on start, completed on confirm, cancelled when an in-progress
+  // run goes back to idle without confirming).
+  // ──────────────────────────────────────────────────────────────────────
+  const lastChannelStatusRef = useRef<(ChannelStatus | null)[]>(
+    Array(NUM_LANES).fill(null),
+  );
+  const startedAtRef = useRef<(string | null)[]>(Array(NUM_LANES).fill(null));
+  const lastConfirmedKeyRef = useRef<Set<string>>(new Set());
+
+  const cloudSnapshot = cloud.state.snapshot;
+  const cloudPostLaneStatus = cloud.postLaneStatus;
+  const frame = conn.state.frame;
+
+  useEffect(() => {
+    if (!frame) return;
+    if (!cloudSnapshot) return;
+    if (cloudSnapshot.competition.sync_mode !== "live") return;
+
+    frame.channels.forEach((ch, idx) => {
+      const lane = idx + 1;
+      const prev = lastChannelStatusRef.current[idx];
+      const next = ch.status;
+      lastChannelStatusRef.current[idx] = next;
+      if (prev === next) return;
+
+      const nowIso = new Date().toISOString();
+
+      // Inactive → Running: a new run started on this lane.
+      if (next === "running" && prev !== "running" && prev !== "captured") {
+        startedAtRef.current[idx] = nowIso;
+        void cloudPostLaneStatus(lane, {
+          status: "active",
+          startedAt: nowIso,
+        });
+        return;
+      }
+
+      // Running/Captured → Inactive without confirming: cancelled.
+      if (
+        next === "inactive" &&
+        (prev === "running" || prev === "captured")
+      ) {
+        const startedAt = startedAtRef.current[idx];
+        startedAtRef.current[idx] = null;
+        void cloudPostLaneStatus(lane, {
+          status: "cancelled",
+          startedAt,
+          endedAt: nowIso,
+        });
+      }
+    });
+  }, [frame, cloudSnapshot, cloudPostLaneStatus]);
+
+  // Completed: dispatched off the dedup'd history list, since the protocol
+  // emits Confirmed for many frames in a row but we only want to send once.
+  useEffect(() => {
+    if (!cloudSnapshot) return;
+    if (cloudSnapshot.competition.sync_mode !== "live") return;
+    const head = conn.state.history[0];
+    if (!head) return;
+    if (lastConfirmedKeyRef.current.has(head.id)) return;
+    lastConfirmedKeyRef.current.add(head.id);
+    const lane = head.channel;
+    const startedAt = startedAtRef.current[lane - 1];
+    const endedAt = new Date(head.timestamp).toISOString();
+    startedAtRef.current[lane - 1] = null;
+    void cloudPostLaneStatus(lane, {
+      status: "completed",
+      originalTimeMs: head.originalTimeMs,
+      startedAt,
+      endedAt,
+    });
+  }, [conn.state.history, cloudSnapshot, cloudPostLaneStatus]);
+
+  // Reset transition state when the snapshot changes (different competition
+  // or none) so stale lane states don't leak across selections.
+  useEffect(() => {
+    lastChannelStatusRef.current = Array(NUM_LANES).fill(null);
+    startedAtRef.current = Array(NUM_LANES).fill(null);
+    lastConfirmedKeyRef.current = new Set();
+  }, [cloudSnapshot?.competition.id]);
+
   // Global keyboard shortcuts (only on the lanes view)
   useEffect(() => {
     if (view !== "lanes") return;
@@ -75,7 +177,14 @@ export default function App() {
       const target = e.target as HTMLElement;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-      if (setupOpen || drawerOpen) return;
+      if (
+        setupOpen ||
+        drawerOpen ||
+        pairingOpen ||
+        pickerOpen ||
+        pendingKidoConflict
+      )
+        return;
 
       switch (e.key) {
         case "1":
@@ -103,10 +212,20 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedLane, adjustChannel, clearChannel, view, setupOpen, drawerOpen]);
+  }, [
+    selectedLane,
+    adjustChannel,
+    clearChannel,
+    view,
+    setupOpen,
+    drawerOpen,
+    pairingOpen,
+    pickerOpen,
+    pendingKidoConflict,
+  ]);
 
   const handleSetupConfirm = useCallback(
-    (next: AppSettings, mode: "serial" | "demo") => {
+    (next: AppSettings, mode: "serial" | "demo" | "cloud") => {
       const persisted = patchSettings(next);
       setSettings(persisted);
       setSetupOpen(false);
@@ -118,6 +237,15 @@ export default function App() {
       }
     },
     [conn],
+  );
+
+  const handleSetupPair = useCallback(
+    async (baseUrl: string, apiKey: string) => {
+      await cloud.pair(baseUrl, apiKey);
+      const persisted = patchSettings({ cloudBaseUrl: baseUrl });
+      setSettings(persisted);
+    },
+    [cloud],
   );
 
   const handleEditConnection = useCallback(() => {
@@ -134,6 +262,47 @@ export default function App() {
     await conn.reset();
   }, [conn]);
 
+  const handleCloudPair = useCallback(() => {
+    setDrawerOpen(false);
+    setPairingOpen(true);
+  }, []);
+
+  const handleCloudPairSubmit = useCallback(
+    async (baseUrl: string, apiKey: string) => {
+      await cloud.pair(baseUrl, apiKey);
+      const persisted = patchSettings({ cloudBaseUrl: baseUrl });
+      setSettings(persisted);
+      setPairingOpen(false);
+    },
+    [cloud],
+  );
+
+  const handlePickCompetition = useCallback(() => {
+    setDrawerOpen(false);
+    setPickerOpen(true);
+  }, []);
+
+  const handleOpenKido = useCallback(async () => {
+    const result = await cloud.openKido();
+    if (result && !result.result.adopted && result.result.conflict) {
+      setPendingKidoConflict({
+        path: result.path,
+        conflict: result.result.conflict,
+      });
+    }
+  }, [cloud]);
+
+  const confirmKidoOverwrite = useCallback(async () => {
+    if (!pendingKidoConflict) return;
+    setKidoConflictBusy(true);
+    try {
+      await cloud.openKidoForce(pendingKidoConflict.path);
+      setPendingKidoConflict(null);
+    } finally {
+      setKidoConflictBusy(false);
+    }
+  }, [cloud, pendingKidoConflict]);
+
   return (
     <div className="flex h-screen w-screen flex-col">
       <TopBar
@@ -145,7 +314,22 @@ export default function App() {
         onMenu={() => setDrawerOpen(true)}
       />
 
-      <main className="min-h-0 flex-1">
+      <main className="min-h-0 flex-1 flex flex-col">
+        {view === "lanes" && (
+          <>
+            <CompetitionBanner
+              snapshot={cloud.state.snapshot}
+              onClose={() => void cloud.deselect()}
+            />
+            {cloud.state.snapshot && (
+              <LaneAssignmentPanel
+                snapshot={cloud.state.snapshot}
+                laneOverrides={cloud.state.laneOverrides}
+                onSetOverride={cloud.setLaneOverride}
+              />
+            )}
+          </>
+        )}
         {view === "lanes" ? (
           <LanesView
             frame={conn.state.frame}
@@ -178,14 +362,58 @@ export default function App() {
           setView("protocol");
           setDrawerOpen(false);
         }}
+        cloudIdentity={cloud.state.identity}
+        cloudSnapshot={cloud.state.snapshot}
+        cloudLoading={cloud.state.loading}
+        cloudResultMessage={cloud.state.lastResultMessage}
+        cloudFailedPosts={cloud.state.failedPosts}
+        onCloudPair={handleCloudPair}
+        onCloudUnpair={cloud.clear}
+        onCloudPickCompetition={handlePickCompetition}
+        onCloudDeselect={cloud.deselect}
+        onCloudOpenKido={async () => {
+          setDrawerOpen(false);
+          await handleOpenKido();
+        }}
+        onCloudExportKido={cloud.exportKido}
+        onCloudDismissResultMessage={cloud.dismissResultMessage}
+        onCloudRetryFailed={cloud.retryFailedPost}
+        onCloudDismissFailed={cloud.dismissFailedPost}
       />
 
       <SetupModal
         open={setupOpen}
         initial={settings}
+        cloudIdentity={cloud.state.identity}
         required={!settings.hasCompletedSetup}
         onCancel={() => setSetupOpen(false)}
         onConfirm={handleSetupConfirm}
+        onPair={handleSetupPair}
+      />
+
+      <CloudPairingModal
+        open={pairingOpen}
+        initialBaseUrl={settings.cloudBaseUrl}
+        onCancel={() => setPairingOpen(false)}
+        onSubmit={handleCloudPairSubmit}
+      />
+
+      <CompetitionPicker
+        open={pickerOpen}
+        competitions={cloud.state.competitions}
+        loading={cloud.state.loading}
+        error={cloud.state.error}
+        selectedId={cloud.state.snapshot?.competition.id ?? null}
+        onRefresh={cloud.refreshCompetitions}
+        onPick={cloud.selectCompetition}
+        onClose={() => setPickerOpen(false)}
+      />
+
+      <KidoConflictDialog
+        conflict={pendingKidoConflict?.conflict ?? null}
+        busy={kidoConflictBusy}
+        onCancel={() => setPendingKidoConflict(null)}
+        onConfirm={confirmKidoOverwrite}
       />
 
       <ErrorBanner message={conn.state.error} onDismiss={conn.clearError} />
@@ -200,7 +428,7 @@ export default function App() {
 }
 
 interface LanesViewProps {
-  frame: import("./lib/types").FrameDto | null;
+  frame: FrameDto | null;
   corrections: number[];
   selectedLane: number | null;
   onSelectLane: (lane: number | null) => void;

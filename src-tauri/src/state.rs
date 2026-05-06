@@ -6,6 +6,7 @@ use std::thread;
 use parking_lot::Mutex;
 use tauri::{AppHandle, Emitter};
 
+use crate::cloud::CloudState;
 use crate::dto::{ConnectionEvent, FrameDto};
 use crate::file_reader::{spawn_file_reader, FileReader};
 use crate::serial_reader::{spawn_serial_reader, SerialEvent, SerialReader};
@@ -44,6 +45,7 @@ impl Connection {
 #[derive(Default)]
 pub struct AppState {
     pub connection: Mutex<Option<Connection>>,
+    pub cloud: CloudState,
 }
 
 impl AppState {
