@@ -19,15 +19,20 @@ jobs:
         include:
           - label: Windows
             runner: blacksmith-2vcpu-windows-2025
-            target: x86_64-pc-windows-msvc
+            # rustup-installable target(s)
+            rust_target: x86_64-pc-windows-msvc
+            # tauri --target value (may be a virtual target like universal-apple-darwin)
+            tauri_target: x86_64-pc-windows-msvc
             extra_args: ''
           - label: macOS
             runner: macos-14
-            target: universal-apple-darwin
+            rust_target: aarch64-apple-darwin,x86_64-apple-darwin
+            tauri_target: universal-apple-darwin
             extra_args: ''
           - label: Linux
             runner: blacksmith-4vcpu-ubuntu-2404
-            target: x86_64-unknown-linux-gnu
+            rust_target: x86_64-unknown-linux-gnu
+            tauri_target: x86_64-unknown-linux-gnu
             extra_args: '--bundles deb,rpm'
 
     steps:
@@ -44,15 +49,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.target }}
-
-      # macOS universal builds need both Apple-Silicon and Intel rustup
-      # targets installed before tauri can lipo them together.
-      - name: Add macOS architecture targets
-        if: matrix.label == 'macOS'
-        run: |
-          rustup target add aarch64-apple-darwin
-          rustup target add x86_64-apple-darwin
+          target: ${{ matrix.rust_target }}
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
@@ -60,8 +57,8 @@ jobs:
           workspaces: 'src-tauri -> target'
           shared-key: 'tauri-${{ matrix.label }}-release'
 
-      # WebKitGTK 4.1 + bundler tools (deb is built from `dpkg-deb`,
-      # rpm is built from `rpmbuild`).
+      # WebKitGTK 4.1, libudev (serialport crate), bundler tools (deb is
+      # built via dpkg-deb, rpm via rpmbuild).
       - name: Install Linux dependencies
         if: matrix.label == 'Linux'
         run: |
@@ -73,6 +70,7 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             libsoup-3.0-dev \
+            libudev-dev \
             patchelf \
             file \
             rpm
@@ -132,6 +130,6 @@ jobs:
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
-          args: --target ${{ matrix.target }} ${{ matrix.extra_args }}
+          args: --target ${{ matrix.tauri_target }} ${{ matrix.extra_args }}
           projectPath: '.'
           tauriScript: 'npx tauri'
