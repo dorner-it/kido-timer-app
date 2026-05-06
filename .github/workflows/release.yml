@@ -9,9 +9,26 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    name: Build Windows installer
-    runs-on: blacksmith-2vcpu-windows-2025
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows
+            runner: blacksmith-2vcpu-windows-2025
+            target: x86_64-pc-windows-msvc
+            extra_args: ''
+          - label: macOS
+            runner: macos-14
+            target: universal-apple-darwin
+            extra_args: ''
+          - label: Linux
+            runner: blacksmith-4vcpu-ubuntu-2404
+            target: x86_64-unknown-linux-gnu
+            extra_args: '--bundles deb,rpm'
 
     steps:
       - name: Checkout repository
@@ -27,13 +44,38 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          target: x86_64-pc-windows-msvc
+          target: ${{ matrix.target }}
+
+      # macOS universal builds need both Apple-Silicon and Intel rustup
+      # targets installed before tauri can lipo them together.
+      - name: Add macOS architecture targets
+        if: matrix.label == 'macOS'
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: 'src-tauri -> target'
-          shared-key: 'tauri-windows-release'
+          shared-key: 'tauri-${{ matrix.label }}-release'
+
+      # WebKitGTK 4.1 + bundler tools (deb is built from `dpkg-deb`,
+      # rpm is built from `rpmbuild`).
+      - name: Install Linux dependencies
+        if: matrix.label == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            patchelf \
+            file \
+            rpm
 
       - name: Install frontend dependencies
         run: npm ci
@@ -56,7 +98,7 @@ jobs:
           $toml = $toml -replace '^version = ".*"', "version = `"$version`""
           Set-Content 'src-tauri/Cargo.toml' $toml -Encoding utf8
 
-      - name: Build & release Tauri Windows installers
+      - name: Build & release Tauri installers
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,16 +110,28 @@ jobs:
           releaseBody: |
             ## Download
 
-            * `*-setup.exe` — NSIS installer (empfohlen)
+            ### Windows
+            * `*-setup.exe` — NSIS-Installer (empfohlen)
             * `*.msi` — MSI-Paket (für Gruppenrichtlinien-Verteilung)
-            * `latest.json` — Manifest für die automatische Update-Funktion
+            * Microsoft WebView2 wird beim ersten Start ggf. automatisch
+              heruntergeladen und installiert.
 
-            Beim ersten Start wird, falls nötig, automatisch Microsoft WebView2
-            heruntergeladen und installiert. Bereits installierte Versionen
-            erkennen dieses Release automatisch und bieten ein Update an.
+            ### macOS
+            * `*.dmg` — Disk-Image (Universal Build, Apple Silicon + Intel)
+            * Beim ersten Start ggf. via Rechtsklick → "Öffnen", da
+              die Anwendung nicht notarisiert ist.
+
+            ### Linux
+            * `*.deb` — Debian / Ubuntu-Paket (Ubuntu 22.04+, Debian 12+)
+            * `*.rpm` — Fedora / openSUSE-Paket
+            * Erfordert WebKitGTK 4.1 (`libwebkit2gtk-4.1-0`).
+
+            `latest.json` ist das Manifest für die automatische
+            Update-Funktion; bestehende Installationen erkennen
+            dieses Release automatisch.
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
-          args: --target x86_64-pc-windows-msvc
+          args: --target ${{ matrix.target }} ${{ matrix.extra_args }}
           projectPath: '.'
           tauriScript: 'npx tauri'
