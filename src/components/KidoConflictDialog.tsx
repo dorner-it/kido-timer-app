@@ -28,13 +28,13 @@ export function KidoConflictDialog({ conflict, busy, onCancel, onConfirm }: Prop
           <div className="rounded-xl border border-ink-50/[0.05] bg-ink-700/40 p-3">
             <span className="label">{t.cloud.kidoConflictBodyPrefix}</span>
             <p className="mt-1 font-display text-[14px] text-ink-50">
-              {conflict.currentCompetitionName}
+              {conflict.currentDisciplineName}
             </p>
           </div>
           <div className="rounded-xl border border-signal/30 bg-signal/5 p-3">
             <span className="label">{t.cloud.kidoConflictBodyToPrefix}</span>
             <p className="mt-1 font-display text-[14px] text-ink-50">
-              {conflict.newCompetitionName}
+              {conflict.newDisciplineName}
             </p>
           </div>
         </div>

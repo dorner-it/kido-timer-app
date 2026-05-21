@@ -13,16 +13,14 @@ use super::client::CloudClient;
 use super::keychain;
 use super::kido;
 use super::types::{
-    CloudEvent, CloudIdentity, CompetitionListItem, CompetitionPayload, FailedPost, KidoConflict,
-    KidoEnvelope, OpenKidoResult, PairedAccount, RunResultRequest, RunStatus,
+    CloudEvent, CloudIdentity, DisciplineListItem, DisciplinePayload, EventSummary, FailedPost,
+    KidoConflict, KidoEnvelope, OpenKidoResult, PairedAccount, RunResultRequest, RunStatus,
 };
 
 pub const CLOUD_EVENT: &str = "kido://cloud-event";
 const POLL_FAST_MS: u64 = 1500;
 const POLL_SLOW_MS: u64 = 5000;
 
-/// Per-(competition, run) memo of the last payload we successfully POSTed,
-/// so we don't spam identical writes on every poll.
 #[derive(Clone, Default)]
 struct PostMemo {
     last_body: Option<RunResultRequest>,
@@ -30,7 +28,7 @@ struct PostMemo {
 
 #[derive(Clone)]
 struct FailureRecord {
-    competition_id: Uuid,
+    discipline_id: Uuid,
     body: RunResultRequest,
     error: String,
     failed_at: String,
@@ -39,8 +37,8 @@ struct FailureRecord {
 #[derive(Default)]
 struct CloudInner {
     account: Option<PairedAccount>,
-    snapshot: Option<CompetitionPayload>,
-    selected_competition_id: Option<Uuid>,
+    snapshot: Option<DisciplinePayload>,
+    selected_discipline_id: Option<Uuid>,
     post_memos: HashMap<Uuid, PostMemo>,
     failed_posts: HashMap<Uuid, FailureRecord>,
 }
@@ -52,8 +50,6 @@ pub struct CloudState {
 }
 
 impl CloudState {
-    /// On startup, try to load the previously-paired account from the keychain.
-    /// Errors are non-fatal — they just mean the user has to re-pair.
     pub fn load_from_keychain(&self) -> Result<Option<CloudIdentity>, String> {
         let account = keychain::load()?;
         let identity = account.as_ref().map(|a| a.identity());
@@ -65,7 +61,7 @@ impl CloudState {
         self.inner.lock().account.as_ref().map(|a| a.identity())
     }
 
-    pub fn current_snapshot(&self) -> Option<CompetitionPayload> {
+    pub fn current_snapshot(&self) -> Option<DisciplinePayload> {
         self.inner.lock().snapshot.clone()
     }
 
@@ -78,8 +74,6 @@ impl CloudState {
         CloudClient::new(account.base_url.clone(), account.api_key.clone())
     }
 
-    /// Pair: validate the API key against the server, fetch the HMAC key,
-    /// persist to the keychain, and return the resolved identity.
     pub async fn pair(
         &self,
         app: AppHandle,
@@ -107,15 +101,19 @@ impl CloudState {
             let mut guard = self.inner.lock();
             guard.account = Some(account);
             guard.snapshot = None;
-            guard.selected_competition_id = None;
+            guard.selected_discipline_id = None;
             guard.post_memos.clear();
             guard.failed_posts.clear();
         }
-        emit(&app, CloudEvent::Paired { identity: identity.clone() });
+        emit(
+            &app,
+            CloudEvent::Paired {
+                identity: identity.clone(),
+            },
+        );
         Ok(identity)
     }
 
-    /// Forget the paired account.
     pub fn clear(&self, app: AppHandle) -> Result<(), String> {
         self.stop_polling();
         keychain::clear()?;
@@ -123,7 +121,7 @@ impl CloudState {
             let mut guard = self.inner.lock();
             guard.account = None;
             guard.snapshot = None;
-            guard.selected_competition_id = None;
+            guard.selected_discipline_id = None;
             guard.post_memos.clear();
             guard.failed_posts.clear();
         }
@@ -131,17 +129,21 @@ impl CloudState {
         Ok(())
     }
 
-    pub async fn list_competitions(&self) -> Result<Vec<CompetitionListItem>, String> {
-        self.client()?.list_competitions().await
+    pub async fn list_events(&self) -> Result<Vec<EventSummary>, String> {
+        self.client()?.list_events().await
+    }
+
+    pub async fn list_disciplines(&self) -> Result<Vec<DisciplineListItem>, String> {
+        self.client()?.list_disciplines().await
     }
 
     pub async fn fetch_snapshot(
         &self,
         app: AppHandle,
         id: Uuid,
-    ) -> Result<CompetitionPayload, String> {
-        let snapshot = self.client()?.get_competition(id).await?;
-        if snapshot.schema_version != 1 {
+    ) -> Result<DisciplinePayload, String> {
+        let snapshot = self.client()?.get_discipline(id).await?;
+        if snapshot.schema_version != 2 {
             return Err(format!(
                 "unsupported schema_version {}",
                 snapshot.schema_version
@@ -150,18 +152,22 @@ impl CloudState {
         {
             let mut guard = self.inner.lock();
             guard.snapshot = Some(snapshot.clone());
-            guard.selected_competition_id = Some(id);
+            guard.selected_discipline_id = Some(id);
         }
-        emit(&app, CloudEvent::SnapshotChanged { snapshot: snapshot.clone() });
+        emit(
+            &app,
+            CloudEvent::SnapshotChanged {
+                snapshot: snapshot.clone(),
+            },
+        );
         Ok(snapshot)
     }
 
-    /// Select a competition and (re)start the background poller.
-    pub async fn select_competition(
+    pub async fn select_discipline(
         &self,
         app: AppHandle,
         id: Uuid,
-    ) -> Result<CompetitionPayload, String> {
+    ) -> Result<DisciplinePayload, String> {
         let snapshot = self.fetch_snapshot(app.clone(), id).await?;
         self.start_polling(app, id);
         Ok(snapshot)
@@ -172,11 +178,14 @@ impl CloudState {
         {
             let mut guard = self.inner.lock();
             guard.snapshot = None;
-            guard.selected_competition_id = None;
+            guard.selected_discipline_id = None;
             guard.post_memos.clear();
             guard.failed_posts.clear();
         }
-        emit(&app, CloudEvent::FailedPostsChanged { failures: vec![] });
+        emit(
+            &app,
+            CloudEvent::FailedPostsChanged { failures: vec![] },
+        );
     }
 
     fn start_polling(&self, app: AppHandle, id: Uuid) {
@@ -188,7 +197,7 @@ impl CloudState {
                     Some(c) => c,
                     None => break,
                 };
-                let cadence = match client.get_competition(id).await {
+                let cadence = match client.get_discipline(id).await {
                     Ok(snapshot) => {
                         let changed = {
                             let mut guard = inner.lock();
@@ -203,7 +212,12 @@ impl CloudState {
                             differs
                         };
                         if changed {
-                            emit(&app, CloudEvent::SnapshotChanged { snapshot: snapshot.clone() });
+                            emit(
+                                &app,
+                                CloudEvent::SnapshotChanged {
+                                    snapshot: snapshot.clone(),
+                                },
+                            );
                         }
                         if has_active_run(&snapshot) {
                             POLL_FAST_MS
@@ -228,17 +242,13 @@ impl CloudState {
         }
     }
 
-    /// Idempotent POST: dedup'd against the last successful body for this
-    /// run_id. Returns `true` if a request was sent, `false` if dedup'd.
-    /// On HTTP success, clears any prior failure for this run.
     pub async fn maybe_post_run_status(
         &self,
         app: AppHandle,
-        competition_id: Uuid,
+        discipline_id: Uuid,
         run_id: Uuid,
         body: RunResultRequest,
     ) -> Result<bool, String> {
-        // Dedup against the last successful body.
         {
             let guard = self.inner.lock();
             if let Some(memo) = guard.post_memos.get(&run_id) {
@@ -249,37 +259,32 @@ impl CloudState {
                 }
             }
         }
-        self.do_post(app, competition_id, run_id, body)
+        self.do_post(app, discipline_id, run_id, body)
             .await
             .map(|_| true)
     }
 
-    /// Force POST without dedup — used for manual retry.
-    pub async fn retry_post(
-        &self,
-        app: AppHandle,
-        run_id: Uuid,
-    ) -> Result<(), String> {
-        let (competition_id, body) = {
+    pub async fn retry_post(&self, app: AppHandle, run_id: Uuid) -> Result<(), String> {
+        let (discipline_id, body) = {
             let guard = self.inner.lock();
             let failure = guard
                 .failed_posts
                 .get(&run_id)
                 .ok_or_else(|| format!("no pending failure for run {run_id}"))?;
-            (failure.competition_id, failure.body.clone())
+            (failure.discipline_id, failure.body.clone())
         };
-        self.do_post(app, competition_id, run_id, body).await
+        self.do_post(app, discipline_id, run_id, body).await
     }
 
     async fn do_post(
         &self,
         app: AppHandle,
-        competition_id: Uuid,
+        discipline_id: Uuid,
         run_id: Uuid,
         body: RunResultRequest,
     ) -> Result<(), String> {
         let client = self.client()?;
-        match client.post_run_result(competition_id, run_id, &body).await {
+        match client.post_run_result(discipline_id, run_id, &body).await {
             Ok(updated) => {
                 let failures_after = {
                     let mut guard = self.inner.lock();
@@ -315,7 +320,7 @@ impl CloudState {
                     guard.failed_posts.insert(
                         run_id,
                         FailureRecord {
-                            competition_id,
+                            discipline_id,
                             body,
                             error: e.clone(),
                             failed_at: now_rfc3339(),
@@ -330,7 +335,12 @@ impl CloudState {
                         message: e.clone(),
                     },
                 );
-                emit(&app, CloudEvent::FailedPostsChanged { failures: failures_after });
+                emit(
+                    &app,
+                    CloudEvent::FailedPostsChanged {
+                        failures: failures_after,
+                    },
+                );
                 Err(e)
             }
         }
@@ -344,16 +354,18 @@ impl CloudState {
             }
             snapshot_failures(&guard)
         };
-        emit(&app, CloudEvent::FailedPostsChanged { failures: failures_after });
+        emit(
+            &app,
+            CloudEvent::FailedPostsChanged {
+                failures: failures_after,
+            },
+        );
     }
 
     pub fn list_failed_posts(&self) -> Vec<FailedPost> {
         snapshot_failures(&self.inner.lock())
     }
 
-    /// Open a `.kido` envelope. If `force` is false and a different
-    /// competition is currently loaded, returns `OpenKidoResult { adopted:
-    /// false, conflict: Some(...) }` and leaves the snapshot untouched.
     pub fn open_kido_file(
         &self,
         app: AppHandle,
@@ -366,10 +378,9 @@ impl CloudState {
 
         let (hmac_key_b64, expected_sub) = {
             let guard = self.inner.lock();
-            let account = guard
-                .account
-                .as_ref()
-                .ok_or_else(|| "not paired — pair the desktop with a web account first".to_string())?;
+            let account = guard.account.as_ref().ok_or_else(|| {
+                "not paired — pair the desktop with a web account first".to_string()
+            })?;
             (account.hmac_key_b64.clone(), account.sub.clone())
         };
 
@@ -379,14 +390,14 @@ impl CloudState {
             let conflict = {
                 let guard = self.inner.lock();
                 guard.snapshot.as_ref().and_then(|current| {
-                    if current.competition.id == payload.competition.id {
+                    if current.discipline.id == payload.discipline.id {
                         None
                     } else {
                         Some(KidoConflict {
-                            current_competition_id: current.competition.id,
-                            current_competition_name: current.competition.name.clone(),
-                            new_competition_id: payload.competition.id,
-                            new_competition_name: payload.competition.name.clone(),
+                            current_discipline_id: current.discipline.id,
+                            current_discipline_name: current.discipline.name.clone(),
+                            new_discipline_id: payload.discipline.id,
+                            new_discipline_name: payload.discipline.name.clone(),
                         })
                     }
                 })
@@ -400,11 +411,11 @@ impl CloudState {
             }
         }
 
-        let comp_id = payload.competition.id;
+        let discipline_id = payload.discipline.id;
         {
             let mut guard = self.inner.lock();
             guard.snapshot = Some(payload.clone());
-            guard.selected_competition_id = Some(comp_id);
+            guard.selected_discipline_id = Some(discipline_id);
             guard.post_memos.clear();
             guard.failed_posts.clear();
         }
@@ -414,7 +425,10 @@ impl CloudState {
                 snapshot: payload.clone(),
             },
         );
-        emit(&app, CloudEvent::FailedPostsChanged { failures: vec![] });
+        emit(
+            &app,
+            CloudEvent::FailedPostsChanged { failures: vec![] },
+        );
         Ok(OpenKidoResult {
             adopted: true,
             payload,
@@ -422,14 +436,13 @@ impl CloudState {
         })
     }
 
-    /// Sign and write the current snapshot to a `.kido` file at `path`.
     pub fn export_kido_file(&self, path: String) -> Result<(), String> {
         let (snapshot, hmac_key_b64, sub) = {
             let guard = self.inner.lock();
             let snapshot = guard
                 .snapshot
                 .as_ref()
-                .ok_or_else(|| "no competition loaded".to_string())?
+                .ok_or_else(|| "no discipline loaded".to_string())?
                 .clone();
             let account = guard
                 .account
@@ -461,7 +474,7 @@ fn snapshot_failures(inner: &CloudInner) -> Vec<FailedPost> {
         .iter()
         .map(|(run_id, rec)| FailedPost {
             run_id: *run_id,
-            competition_id: rec.competition_id,
+            discipline_id: rec.discipline_id,
             run_number: rec.body.run_number,
             status: rec.body.status,
             original_time_ms: rec.body.original_time_ms,
@@ -479,17 +492,18 @@ fn now_rfc3339() -> String {
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
 }
 
-fn has_active_run(snapshot: &CompetitionPayload) -> bool {
+fn has_active_run(snapshot: &DisciplinePayload) -> bool {
     snapshot
         .runs
         .iter()
         .any(|r| matches!(r.status, RunStatus::Active))
 }
 
-fn payload_equiv(a: &CompetitionPayload, b: &CompetitionPayload) -> bool {
-    a.competition.is_active == b.competition.is_active
-        && a.competition.current_run_id == b.competition.current_run_id
-        && a.competition.sync_mode == b.competition.sync_mode
+fn payload_equiv(a: &DisciplinePayload, b: &DisciplinePayload) -> bool {
+    a.event.is_active == b.event.is_active
+        && a.event.current_run_id == b.event.current_run_id
+        && a.event.current_discipline_id == b.event.current_discipline_id
+        && a.discipline.sync_mode == b.discipline.sync_mode
         && a.runs.len() == b.runs.len()
         && a.runs.iter().zip(b.runs.iter()).all(|(x, y)| {
             x.id == y.id

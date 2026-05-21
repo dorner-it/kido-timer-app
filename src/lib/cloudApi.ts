@@ -5,8 +5,9 @@ import { IS_TAURI } from "./tauri";
 import type {
   CloudEvent,
   CloudIdentity,
-  CompetitionListItem,
-  CompetitionPayload,
+  DisciplineListItem,
+  DisciplinePayload,
+  EventSummary,
   FailedPost,
   OpenKidoResult,
   RunStatus,
@@ -39,16 +40,21 @@ export async function cloudClear(): Promise<void> {
   await invoke("cloud_clear");
 }
 
-export async function cloudListCompetitions(): Promise<CompetitionListItem[]> {
+export async function cloudListEvents(): Promise<EventSummary[]> {
   if (!IS_TAURI) return [];
-  return invoke<CompetitionListItem[]>("cloud_list_competitions");
+  return invoke<EventSummary[]>("cloud_list_events");
 }
 
-export async function cloudSelectCompetition(
+export async function cloudListDisciplines(): Promise<DisciplineListItem[]> {
+  if (!IS_TAURI) return [];
+  return invoke<DisciplineListItem[]>("cloud_list_disciplines");
+}
+
+export async function cloudSelectDiscipline(
   id: string,
-): Promise<CompetitionPayload> {
+): Promise<DisciplinePayload> {
   if (!IS_TAURI) return requireDesktop("Wettkampfauswahl");
-  return invoke<CompetitionPayload>("cloud_select_competition", { id });
+  return invoke<DisciplinePayload>("cloud_select_discipline", { id });
 }
 
 export async function cloudDeselect(): Promise<void> {
@@ -56,13 +62,13 @@ export async function cloudDeselect(): Promise<void> {
   await invoke("cloud_deselect");
 }
 
-export async function cloudSnapshot(): Promise<CompetitionPayload | null> {
+export async function cloudSnapshot(): Promise<DisciplinePayload | null> {
   if (!IS_TAURI) return null;
-  return invoke<CompetitionPayload | null>("cloud_snapshot");
+  return invoke<DisciplinePayload | null>("cloud_snapshot");
 }
 
 export interface PostRunArgs {
-  competitionId: string;
+  disciplineId: string;
   runId: string;
   runNumber: number;
   status: RunStatus;
@@ -74,7 +80,7 @@ export interface PostRunArgs {
 export async function cloudPostRunStatus(args: PostRunArgs): Promise<boolean> {
   if (!IS_TAURI) return false;
   return invoke<boolean>("cloud_post_run_status", {
-    competitionId: args.competitionId,
+    disciplineId: args.disciplineId,
     runId: args.runId,
     runNumber: args.runNumber,
     status: args.status,
@@ -99,7 +105,6 @@ export async function cloudFailedPosts(): Promise<FailedPost[]> {
   return invoke<FailedPost[]>("cloud_failed_posts");
 }
 
-/** Show file picker. Returns the chosen path or null if cancelled. */
 export async function pickKidoFile(): Promise<string | null> {
   if (!IS_TAURI) return null;
   const path = await openDialog({
@@ -115,8 +120,8 @@ export async function pickKidoFile(): Promise<string | null> {
 }
 
 /** Verify a `.kido` file. Adopts the snapshot unless `force` is false and a
- * different competition is already loaded — in which case the result will
- * carry a `conflict` and `adopted: false`, leaving the existing snapshot. */
+ *  different discipline is already loaded — in which case the result will
+ *  carry a `conflict` and `adopted: false`, leaving the existing snapshot. */
 export async function cloudOpenKido(
   path: string,
   force = false,

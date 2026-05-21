@@ -104,7 +104,7 @@ export default function App() {
   useEffect(() => {
     if (!frame) return;
     if (!cloudSnapshot) return;
-    if (cloudSnapshot.competition.sync_mode !== "live") return;
+    if (cloudSnapshot.discipline.sync_mode !== "live") return;
 
     frame.channels.forEach((ch, idx) => {
       const lane = idx + 1;
@@ -145,7 +145,7 @@ export default function App() {
   // emits Confirmed for many frames in a row but we only want to send once.
   useEffect(() => {
     if (!cloudSnapshot) return;
-    if (cloudSnapshot.competition.sync_mode !== "live") return;
+    if (cloudSnapshot.discipline.sync_mode !== "live") return;
     const head = conn.state.history[0];
     if (!head) return;
     if (lastConfirmedKeyRef.current.has(head.id)) return;
@@ -168,7 +168,7 @@ export default function App() {
     lastChannelStatusRef.current = Array(NUM_LANES).fill(null);
     startedAtRef.current = Array(NUM_LANES).fill(null);
     lastConfirmedKeyRef.current = new Set();
-  }, [cloudSnapshot?.competition.id]);
+  }, [cloudSnapshot?.discipline.id]);
 
   // Global keyboard shortcuts (only on the lanes view)
   useEffect(() => {
@@ -400,12 +400,12 @@ export default function App() {
 
       <CompetitionPicker
         open={pickerOpen}
-        competitions={cloud.state.competitions}
+        disciplines={cloud.state.disciplines}
         loading={cloud.state.loading}
         error={cloud.state.error}
-        selectedId={cloud.state.snapshot?.competition.id ?? null}
-        onRefresh={cloud.refreshCompetitions}
-        onPick={cloud.selectCompetition}
+        selectedId={cloud.state.snapshot?.discipline.id ?? null}
+        onRefresh={cloud.refreshDisciplines}
+        onPick={cloud.selectDiscipline}
         onClose={() => setPickerOpen(false)}
       />
 

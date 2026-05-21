@@ -2,7 +2,7 @@ use tauri::{AppHandle, State};
 use uuid::Uuid;
 
 use crate::cloud::types::{
-    CloudIdentity, CompetitionListItem, CompetitionPayload, FailedPost, OpenKidoResult,
+    CloudIdentity, DisciplineListItem, DisciplinePayload, EventSummary, FailedPost, OpenKidoResult,
     RunResultRequest, RunStatus,
 };
 use crate::state::AppState;
@@ -44,7 +44,11 @@ pub fn send_reset(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn current_source(state: State<'_, AppState>) -> Option<String> {
-    state.connection.lock().as_ref().map(|c| c.source().to_string())
+    state
+        .connection
+        .lock()
+        .as_ref()
+        .map(|c| c.source().to_string())
 }
 
 #[tauri::command]
@@ -75,19 +79,24 @@ pub fn cloud_clear(app_handle: AppHandle, state: State<'_, AppState>) -> Result<
 }
 
 #[tauri::command]
-pub async fn cloud_list_competitions(
-    state: State<'_, AppState>,
-) -> Result<Vec<CompetitionListItem>, String> {
-    state.cloud.list_competitions().await
+pub async fn cloud_list_events(state: State<'_, AppState>) -> Result<Vec<EventSummary>, String> {
+    state.cloud.list_events().await
 }
 
 #[tauri::command]
-pub async fn cloud_select_competition(
+pub async fn cloud_list_disciplines(
+    state: State<'_, AppState>,
+) -> Result<Vec<DisciplineListItem>, String> {
+    state.cloud.list_disciplines().await
+}
+
+#[tauri::command]
+pub async fn cloud_select_discipline(
     app_handle: AppHandle,
     state: State<'_, AppState>,
     id: Uuid,
-) -> Result<CompetitionPayload, String> {
-    state.cloud.select_competition(app_handle, id).await
+) -> Result<DisciplinePayload, String> {
+    state.cloud.select_discipline(app_handle, id).await
 }
 
 #[tauri::command]
@@ -96,7 +105,7 @@ pub fn cloud_deselect(app_handle: AppHandle, state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-pub fn cloud_snapshot(state: State<'_, AppState>) -> Option<CompetitionPayload> {
+pub fn cloud_snapshot(state: State<'_, AppState>) -> Option<DisciplinePayload> {
     state.cloud.current_snapshot()
 }
 
@@ -105,7 +114,7 @@ pub fn cloud_snapshot(state: State<'_, AppState>) -> Option<CompetitionPayload> 
 pub async fn cloud_post_run_status(
     app_handle: AppHandle,
     state: State<'_, AppState>,
-    competition_id: Uuid,
+    discipline_id: Uuid,
     run_id: Uuid,
     run_number: u32,
     status: RunStatus,
@@ -122,7 +131,7 @@ pub async fn cloud_post_run_status(
     };
     state
         .cloud
-        .maybe_post_run_status(app_handle, competition_id, run_id, body)
+        .maybe_post_run_status(app_handle, discipline_id, run_id, body)
         .await
 }
 

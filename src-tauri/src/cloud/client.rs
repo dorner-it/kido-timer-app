@@ -4,7 +4,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::types::{
-    CompetitionListItem, CompetitionPayload, HmacKeyResponse, MeResponse, Run, RunResultRequest,
+    DisciplineListItem, DisciplinePayload, EventSummary, HmacKeyResponse, MeResponse, Run,
+    RunResultRequest,
 };
 
 const USER_AGENT: &str = concat!("KiDo-Timer/", env!("CARGO_PKG_VERSION"));
@@ -42,22 +43,26 @@ impl CloudClient {
         self.get_json("/api/export/me/hmac-key").await
     }
 
-    pub async fn list_competitions(&self) -> Result<Vec<CompetitionListItem>, String> {
-        self.get_json("/api/export/competitions").await
+    pub async fn list_events(&self) -> Result<Vec<EventSummary>, String> {
+        self.get_json("/api/export/events").await
     }
 
-    pub async fn get_competition(&self, id: Uuid) -> Result<CompetitionPayload, String> {
-        self.get_json(&format!("/api/export/competitions/{id}")).await
+    pub async fn list_disciplines(&self) -> Result<Vec<DisciplineListItem>, String> {
+        self.get_json("/api/export/disciplines").await
+    }
+
+    pub async fn get_discipline(&self, id: Uuid) -> Result<DisciplinePayload, String> {
+        self.get_json(&format!("/api/export/disciplines/{id}")).await
     }
 
     pub async fn post_run_result(
         &self,
-        competition_id: Uuid,
+        discipline_id: Uuid,
         run_id: Uuid,
         body: &RunResultRequest,
     ) -> Result<Run, String> {
         let url = self.url(&format!(
-            "/api/export/competitions/{competition_id}/runs/{run_id}/result"
+            "/api/export/disciplines/{discipline_id}/runs/{run_id}/result"
         ));
         let resp = self
             .http
@@ -91,10 +96,9 @@ async fn decode<T: DeserializeOwned>(resp: reqwest::Response) -> Result<T, Strin
 
     if status.is_success() {
         return serde_json::from_slice::<T>(&bytes)
-            .map_err(|e| format!("parse response failed: {e}"))
+            .map_err(|e| format!("parse response failed: {e}"));
     }
 
-    // Try to parse the documented `{ "error": { "code", "message" } }` envelope
     let parsed: Result<Value, _> = serde_json::from_slice(&bytes);
     let detail = match parsed {
         Ok(v) => v
@@ -117,6 +121,9 @@ async fn decode<T: DeserializeOwned>(resp: reqwest::Response) -> Result<T, Strin
         StatusCode::FORBIDDEN => format!("forbidden: {detail}"),
         StatusCode::NOT_FOUND => format!("not_found: {detail}"),
         StatusCode::CONFLICT => format!("conflict: {detail}"),
+        StatusCode::GONE => format!(
+            "gone (alte API entfernt — Web-App und Desktop-App müssen aktuell sein): {detail}"
+        ),
         s => format!("http {}: {detail}", s.as_u16()),
     })
 }
