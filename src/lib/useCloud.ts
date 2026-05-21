@@ -6,12 +6,12 @@ import {
   cloudExportKido,
   cloudFailedPosts,
   cloudIdentity,
-  cloudListCompetitions,
+  cloudListDisciplines,
   cloudOpenKido,
   cloudPair,
   cloudPostRunStatus,
   cloudRetryPost,
-  cloudSelectCompetition,
+  cloudSelectDiscipline,
   cloudSnapshot,
   listenCloudEvents,
   pickKidoFile,
@@ -20,8 +20,8 @@ import {
 import type {
   CloudEvent,
   CloudIdentity,
-  CompetitionListItem,
-  CompetitionPayload,
+  DisciplineListItem,
+  DisciplinePayload,
   FailedPost,
   KidoConflict,
   OpenKidoResult,
@@ -30,8 +30,8 @@ import type {
 
 interface State {
   identity: CloudIdentity | null;
-  snapshot: CompetitionPayload | null;
-  competitions: CompetitionListItem[];
+  snapshot: DisciplinePayload | null;
+  disciplines: DisciplineListItem[];
   loading: boolean;
   error: string | null;
   lastResultMessage: string | null;
@@ -42,8 +42,8 @@ interface State {
 
 type Action =
   | { type: "setIdentity"; identity: CloudIdentity | null }
-  | { type: "setCompetitions"; list: CompetitionListItem[] }
-  | { type: "setSnapshot"; snapshot: CompetitionPayload | null }
+  | { type: "setDisciplines"; list: DisciplineListItem[] }
+  | { type: "setSnapshot"; snapshot: DisciplinePayload | null }
   | { type: "setLoading"; loading: boolean }
   | { type: "setError"; error: string | null }
   | { type: "setResultMessage"; message: string | null }
@@ -55,7 +55,7 @@ type Action =
 const INITIAL: State = {
   identity: null,
   snapshot: null,
-  competitions: [],
+  disciplines: [],
   loading: false,
   error: null,
   lastResultMessage: null,
@@ -67,18 +67,18 @@ function reducer(s: State, a: Action): State {
   switch (a.type) {
     case "setIdentity":
       return { ...s, identity: a.identity };
-    case "setCompetitions":
-      return { ...s, competitions: a.list };
+    case "setDisciplines":
+      return { ...s, disciplines: a.list };
     case "setSnapshot": {
-      // If the underlying competition changed, drop lane overrides.
-      const sameComp =
+      // If the underlying discipline changed, drop lane overrides.
+      const sameDisc =
         s.snapshot && a.snapshot
-          ? s.snapshot.competition.id === a.snapshot.competition.id
+          ? s.snapshot.discipline.id === a.snapshot.discipline.id
           : !s.snapshot && !a.snapshot;
       return {
         ...s,
         snapshot: a.snapshot,
-        laneOverrides: sameComp ? s.laneOverrides : {},
+        laneOverrides: sameDisc ? s.laneOverrides : {},
       };
     }
     case "setLoading":
@@ -104,9 +104,7 @@ function reducer(s: State, a: Action): State {
 
 export function useCloud() {
   const [state, dispatch] = useReducer(reducer, INITIAL);
-  // Latest snapshot mirror, kept in a ref so postRunStatus can resolve
-  // run metadata without depending on render state.
-  const snapshotRef = useRef<CompetitionPayload | null>(null);
+  const snapshotRef = useRef<DisciplinePayload | null>(null);
   const overridesRef = useRef<Record<number, string>>({});
 
   useEffect(() => {
@@ -190,12 +188,12 @@ export function useCloud() {
     dispatch({ type: "cleared" });
   }, []);
 
-  const refreshCompetitions = useCallback(async () => {
+  const refreshDisciplines = useCallback(async () => {
     dispatch({ type: "setLoading", loading: true });
     dispatch({ type: "setError", error: null });
     try {
-      const list = await cloudListCompetitions();
-      dispatch({ type: "setCompetitions", list });
+      const list = await cloudListDisciplines();
+      dispatch({ type: "setDisciplines", list });
     } catch (e) {
       dispatch({ type: "setError", error: String(e) });
     } finally {
@@ -203,11 +201,11 @@ export function useCloud() {
     }
   }, []);
 
-  const selectCompetition = useCallback(async (id: string) => {
+  const selectDiscipline = useCallback(async (id: string) => {
     dispatch({ type: "setLoading", loading: true });
     dispatch({ type: "setError", error: null });
     try {
-      const snapshot = await cloudSelectCompetition(id);
+      const snapshot = await cloudSelectDiscipline(id);
       dispatch({ type: "setSnapshot", snapshot });
       return snapshot;
     } catch (e) {
@@ -223,10 +221,6 @@ export function useCloud() {
     dispatch({ type: "setSnapshot", snapshot: null });
   }, []);
 
-  /**
-   * Two-phase open: pick the file, verify it, return the result + path (so
-   * the caller can re-apply with `force=true` if there's a conflict).
-   */
   const openKido = useCallback(async (): Promise<
     { path: string; result: OpenKidoResult } | null
   > => {
@@ -261,18 +255,22 @@ export function useCloud() {
 
   const exportKido = useCallback(async () => {
     if (!state.snapshot) return null;
-    const date = state.snapshot.competition.date;
-    const slug = state.snapshot.competition.name
+    const date = state.snapshot.event.date;
+    const eventSlug = state.snapshot.event.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
-    return cloudExportKido(`kido-${slug || "export"}-${date}.kido`);
+    const discSlug = state.snapshot.discipline.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return cloudExportKido(`kido-${eventSlug || "export"}-${discSlug || "wettkampf"}-${date}.kido`);
   }, [state.snapshot]);
 
   /**
    * POST a run state change. Resolves the matching run_id from the current
    * lane via overrides → active-on-lane → current_run_id. No-op if no run
-   * matches or no competition is loaded.
+   * matches or no discipline is loaded.
    */
   const postLaneStatus = useCallback(
     async (
@@ -281,13 +279,13 @@ export function useCloud() {
     ): Promise<void> => {
       const snapshot = snapshotRef.current;
       if (!snapshot) return;
-      if (snapshot.competition.sync_mode !== "live") return;
+      if (snapshot.discipline.sync_mode !== "live") return;
       const overrides = overridesRef.current;
       const run = pickRunForLane(snapshot, lane, overrides);
       if (!run) return;
       try {
         await cloudPostRunStatus({
-          competitionId: snapshot.competition.id,
+          disciplineId: snapshot.discipline.id,
           runId: run.id,
           runNumber: run.run_number,
           ...patch,
@@ -326,8 +324,8 @@ export function useCloud() {
     state,
     pair,
     clear,
-    refreshCompetitions,
-    selectCompetition,
+    refreshDisciplines,
+    selectDiscipline,
     deselect,
     openKido,
     openKidoForce,
@@ -345,10 +343,10 @@ export type KidoConflictInfo = KidoConflict;
 /**
  * Pick the run that should receive a confirmed time on the given desktop lane.
  * Order: explicit operator override → active run on matching lane →
- * snapshot.current_run_id (if active and lane-compatible).
+ * snapshot.event.current_run_id (if active and lane-compatible).
  */
 export function pickRunForLane(
-  snapshot: CompetitionPayload | null,
+  snapshot: DisciplinePayload | null,
   lane: number,
   overrides: Record<number, string> = {},
 ): Run | null {
@@ -362,10 +360,9 @@ export function pickRunForLane(
     (r) => r.status === "active" && r.lane === lane,
   );
   if (active) return active;
-  if (snapshot.competition.current_run_id) {
+  if (snapshot.event.current_run_id) {
     const r = snapshot.runs.find(
-      (x) =>
-        x.id === snapshot.competition.current_run_id && x.status === "active",
+      (x) => x.id === snapshot.event.current_run_id && x.status === "active",
     );
     if (r && (r.lane === null || r.lane === lane)) return r;
   }
@@ -373,7 +370,7 @@ export function pickRunForLane(
 }
 
 export function teamForRun(
-  snapshot: CompetitionPayload | null,
+  snapshot: DisciplinePayload | null,
   runId: string | null | undefined,
 ) {
   if (!snapshot || !runId) return null;
@@ -384,7 +381,7 @@ export function teamForRun(
 }
 
 export function runnerForRun(
-  snapshot: CompetitionPayload | null,
+  snapshot: DisciplinePayload | null,
   runId: string | null | undefined,
 ) {
   if (!snapshot || !runId) return null;

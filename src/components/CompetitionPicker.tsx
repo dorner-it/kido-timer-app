@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { t } from "../lib/i18n";
-import type { CompetitionListItem, SyncMode } from "../lib/cloudTypes";
+import type { DisciplineListItem, SyncMode } from "../lib/cloudTypes";
 
 interface Props {
   open: boolean;
-  competitions: CompetitionListItem[];
+  disciplines: DisciplineListItem[];
   loading: boolean;
   error: string | null;
   selectedId: string | null;
@@ -15,7 +15,7 @@ interface Props {
 
 export function CompetitionPicker({
   open,
-  competitions,
+  disciplines,
   loading,
   error,
   selectedId,
@@ -43,6 +43,24 @@ export function CompetitionPicker({
       setPickingId(null);
     }
   };
+
+  // Group disciplines by event so the picker shows the day's structure.
+  const groupedByEvent = new Map<
+    string,
+    { event_name: string; event_date: string; entries: DisciplineListItem[] }
+  >();
+  for (const d of disciplines) {
+    const bucket = groupedByEvent.get(d.event_id) ?? {
+      event_name: d.event_name,
+      event_date: d.event_date,
+      entries: [],
+    };
+    bucket.entries.push(d);
+    groupedByEvent.set(d.event_id, bucket);
+  }
+  const eventGroups = Array.from(groupedByEvent.entries()).sort(
+    (a, b) => (a[1].event_date > b[1].event_date ? -1 : 1),
+  );
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center px-6">
@@ -74,46 +92,60 @@ export function CompetitionPicker({
               {error}
             </div>
           )}
-          {!loading && competitions.length === 0 && (
+          {!loading && disciplines.length === 0 && (
             <p className="font-mono text-[12px] text-ink-200/80">
               {t.cloud.noCompetitions}
             </p>
           )}
-          <ul className="flex flex-col gap-2">
-            {competitions.map((c) => {
-              const isSelected = c.id === selectedId;
-              return (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() => pick(c.id)}
-                    disabled={pickingId !== null}
-                    className={[
-                      "w-full rounded-xl border px-4 py-3 text-left transition disabled:opacity-50",
-                      isSelected
-                        ? "border-signal/40 bg-signal/10 ring-1 ring-signal/30"
-                        : "border-ink-50/10 bg-ink-50/[0.02] hover:bg-ink-50/[0.06]",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="font-display text-[15px] font-medium text-ink-50 truncate">
-                          {c.name}
-                        </p>
-                        <p className="mt-0.5 font-mono text-[11px] text-ink-200/80">
-                          {formatDate(c.date)} · {modeLabel(c.mode)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {c.is_active && <Badge color="signal" label={t.cloud.activeBadge} />}
-                        <SyncBadge mode={c.sync_mode} />
-                      </div>
-                    </div>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          {eventGroups.map(([event_id, group]) => (
+            <section key={event_id} className="mb-5 last:mb-0">
+              <div className="mb-2 flex items-baseline justify-between">
+                <h3 className="font-display text-[14px] font-medium text-ink-50 truncate">
+                  {group.event_name}
+                </h3>
+                <p className="font-mono text-[11px] tracking-wider text-ink-200/70">
+                  {formatDate(group.event_date)}
+                </p>
+              </div>
+              <ul className="flex flex-col gap-2">
+                {group.entries.map((d) => {
+                  const isSelected = d.id === selectedId;
+                  return (
+                    <li key={d.id}>
+                      <button
+                        type="button"
+                        onClick={() => pick(d.id)}
+                        disabled={pickingId !== null}
+                        className={[
+                          "w-full rounded-xl border px-4 py-3 text-left transition disabled:opacity-50",
+                          isSelected
+                            ? "border-signal/40 bg-signal/10 ring-1 ring-signal/30"
+                            : "border-ink-50/10 bg-ink-50/[0.02] hover:bg-ink-50/[0.06]",
+                        ].join(" ")}
+                      >
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="font-display text-[15px] font-medium text-ink-50 truncate">
+                              {d.name}
+                            </p>
+                            <p className="mt-0.5 font-mono text-[11px] text-ink-200/80">
+                              {modeLabel(d.mode)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {d.is_current && (
+                              <Badge color="signal" label={t.cloud.activeBadge} />
+                            )}
+                            <SyncBadge mode={d.sync_mode} />
+                          </div>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-ink-50/[0.05] bg-ink-900/40 px-7 py-4">
@@ -175,7 +207,6 @@ function modeLabel(m: string): string {
 }
 
 function formatDate(iso: string): string {
-  // YYYY-MM-DD → DD.MM.YYYY (de)
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!m) return iso;
   return `${m[3]}.${m[2]}.${m[1]}`;

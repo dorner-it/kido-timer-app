@@ -4,11 +4,11 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
-use super::types::{CompetitionPayload, KidoEnvelope};
+use super::types::{DisciplinePayload, KidoEnvelope};
 
-const ENVELOPE_VERSION: u32 = 1;
+const ENVELOPE_VERSION: u32 = 2;
 const ALG: &str = "HS256";
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -36,8 +36,7 @@ fn verify_sig(key: &[u8], payload_b64: &str, sig_b64url: &str) -> Result<(), Str
         .map_err(|_| "signature mismatch".to_string())
 }
 
-/// Decode `envelope.payload` (standard base64) into the inner JSON payload.
-fn decode_payload(payload_b64: &str) -> Result<CompetitionPayload, String> {
+fn decode_payload(payload_b64: &str) -> Result<DisciplinePayload, String> {
     let bytes = STANDARD
         .decode(payload_b64.as_bytes())
         .map_err(|e| format!("payload base64 decode failed: {e}"))?;
@@ -51,7 +50,7 @@ fn now_rfc3339() -> Result<String, String> {
 }
 
 pub fn build_envelope(
-    payload: &CompetitionPayload,
+    payload: &DisciplinePayload,
     hmac_key_b64: &str,
 ) -> Result<KidoEnvelope, String> {
     if payload.schema_version != SCHEMA_VERSION {
@@ -79,7 +78,7 @@ pub fn verify_envelope(
     envelope: &KidoEnvelope,
     hmac_key_b64: &str,
     expected_owner_sub: &str,
-) -> Result<CompetitionPayload, String> {
+) -> Result<DisciplinePayload, String> {
     if envelope.v != ENVELOPE_VERSION {
         return Err(format!(
             "unsupported envelope version {} (expected {ENVELOPE_VERSION})",
@@ -116,12 +115,10 @@ pub fn verify_envelope(
     Ok(payload)
 }
 
-/// Stamp an existing snapshot with new export metadata. The desktop preserves
-/// IDs and only swaps in fresh `exported_at` plus the supplied `owner_sub`.
 pub fn restamp_for_export(
-    payload: &CompetitionPayload,
+    payload: &DisciplinePayload,
     owner_sub: &str,
-) -> Result<CompetitionPayload, String> {
+) -> Result<DisciplinePayload, String> {
     let mut next = payload.clone();
     next.schema_version = SCHEMA_VERSION;
     next.exported_at = now_rfc3339()?;
@@ -132,28 +129,40 @@ pub fn restamp_for_export(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cloud::types::{CompetitionMeta, SyncMode, TimerMode};
+    use crate::cloud::types::{Discipline, DisciplinePayload, ExportedEvent, SyncMode, TimerMode};
 
-    fn fake_payload() -> CompetitionPayload {
-        CompetitionPayload {
-            schema_version: 1,
-            exported_at: "2026-05-06T10:13:00Z".into(),
+    fn fake_payload() -> DisciplinePayload {
+        let event_id = uuid::Uuid::nil();
+        let discipline_id = uuid::Uuid::nil();
+        DisciplinePayload {
+            schema_version: SCHEMA_VERSION,
+            exported_at: "2026-05-21T10:13:00Z".into(),
             owner_sub: "abc".into(),
-            competition: CompetitionMeta {
-                id: uuid::Uuid::nil(),
+            event: ExportedEvent {
+                id: event_id,
                 owner_sub: "abc".into(),
                 name: "Test".into(),
                 date: "2026-06-12".into(),
                 location: None,
+                is_active: true,
+                current_discipline_id: Some(discipline_id),
+                current_run_id: None,
+                created_at: None,
+                updated_at: None,
+            },
+            discipline: Discipline {
+                id: discipline_id,
+                event_id,
+                name: "Löschangriff".into(),
                 mode: TimerMode::SingleLane,
                 sync_mode: SyncMode::Live,
-                is_active: Some(true),
-                current_run_id: None,
+                position: 1,
                 created_at: None,
                 updated_at: None,
             },
             teams: vec![],
             runners: vec![],
+            team_entries: vec![],
             runs: vec![],
             approved_penalties: vec![],
         }
@@ -161,12 +170,11 @@ mod tests {
 
     #[test]
     fn round_trip_envelope() {
-        // 32-byte hmac key, base64url no-pad
         let key = URL_SAFE_NO_PAD.encode([7u8; 32]);
         let payload = fake_payload();
         let envelope = build_envelope(&payload, &key).expect("build");
         let decoded = verify_envelope(&envelope, &key, "abc").expect("verify");
-        assert_eq!(decoded.competition.name, "Test");
+        assert_eq!(decoded.discipline.name, "Löschangriff");
     }
 
     #[test]
@@ -183,7 +191,6 @@ mod tests {
         let key = URL_SAFE_NO_PAD.encode([7u8; 32]);
         let payload = fake_payload();
         let mut envelope = build_envelope(&payload, &key).expect("build");
-        // flip a byte in the payload
         let mut bytes = STANDARD.decode(&envelope.payload).unwrap();
         bytes[0] ^= 0x01;
         envelope.payload = STANDARD.encode(bytes);

@@ -48,27 +48,47 @@ pub struct HmacKeyResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompetitionListItem {
+pub struct EventSummary {
     pub id: Uuid,
     pub name: String,
     pub date: String,
-    pub mode: TimerMode,
-    pub sync_mode: SyncMode,
+    pub location: Option<String>,
     pub is_active: bool,
+    pub current_discipline_id: Option<Uuid>,
     pub current_run_id: Option<Uuid>,
 }
 
+/// Flat list entry returned by `GET /api/export/disciplines`. Each
+/// discipline carries its parent event metadata inline so the picker
+/// can display them grouped without a second fetch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompetitionMeta {
+pub struct DisciplineListItem {
+    pub id: Uuid,
+    pub event_id: Uuid,
+    pub event_name: String,
+    pub event_date: String,
+    pub name: String,
+    pub mode: TimerMode,
+    pub sync_mode: SyncMode,
+    /// True iff this discipline is the one selected on the active
+    /// event's lane. The desktop usually pairs to this one.
+    pub is_current: bool,
+}
+
+/// Event projection embedded in `DisciplinePayload`. Lighter than the
+/// full server-side Event row — `decider_tokens` are stripped before
+/// crossing the wire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportedEvent {
     pub id: Uuid,
     pub owner_sub: String,
     pub name: String,
     pub date: String,
     pub location: Option<String>,
-    pub mode: TimerMode,
-    pub sync_mode: SyncMode,
     #[serde(default)]
-    pub is_active: Option<bool>,
+    pub is_active: bool,
+    #[serde(default)]
+    pub current_discipline_id: Option<Uuid>,
     #[serde(default)]
     pub current_run_id: Option<Uuid>,
     #[serde(default)]
@@ -78,28 +98,65 @@ pub struct CompetitionMeta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Discipline {
+    pub id: Uuid,
+    pub event_id: Uuid,
+    pub name: String,
+    pub mode: TimerMode,
+    pub sync_mode: SyncMode,
+    pub position: u32,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Team {
     pub id: Uuid,
-    pub competition_id: Uuid,
+    pub event_id: Uuid,
     pub name: String,
+    pub position: u32,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamEntry {
+    pub team_id: Uuid,
+    pub discipline_id: Uuid,
+    pub event_id: Uuid,
     pub start_number: u32,
+    #[serde(default)]
+    pub lane: Option<u8>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Runner {
     pub id: Uuid,
     pub team_id: Uuid,
-    pub competition_id: Uuid,
+    pub event_id: Uuid,
     pub first_name: String,
     pub last_name: String,
     pub birth_date: String,
     pub position: u32,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Run {
     pub id: Uuid,
-    pub competition_id: Uuid,
+    pub event_id: Uuid,
+    pub discipline_id: Uuid,
     pub team_id: Uuid,
     #[serde(default)]
     pub runner_id: Option<Uuid>,
@@ -124,7 +181,8 @@ pub struct Run {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Penalty {
     pub id: Uuid,
-    pub competition_id: Uuid,
+    pub event_id: Uuid,
+    pub discipline_id: Uuid,
     pub run_id: Uuid,
     pub team_id: Uuid,
     #[serde(default)]
@@ -141,18 +199,21 @@ pub struct Penalty {
     pub reviewed_by: Option<String>,
 }
 
-/// Inner payload of a `.kido` envelope, also the response shape of
-/// `GET /api/export/competitions/:id`.
+/// Inner payload of a `.kido` envelope (schema v2). Also the response
+/// shape of `GET /api/export/disciplines/:id`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompetitionPayload {
+pub struct DisciplinePayload {
     pub schema_version: u32,
     pub exported_at: String,
     pub owner_sub: String,
-    pub competition: CompetitionMeta,
+    pub event: ExportedEvent,
+    pub discipline: Discipline,
     #[serde(default)]
     pub teams: Vec<Team>,
     #[serde(default)]
     pub runners: Vec<Runner>,
+    #[serde(default)]
+    pub team_entries: Vec<TeamEntry>,
     #[serde(default)]
     pub runs: Vec<Run>,
     #[serde(default)]
@@ -165,9 +226,7 @@ pub struct KidoEnvelope {
     pub alg: String,
     pub owner_sub: String,
     pub issued_at: String,
-    /// standard base64 (with padding) of the payload UTF-8 JSON bytes
     pub payload: String,
-    /// base64url (no padding) of HMAC-SHA256 over `payload` bytes
     pub sig: String,
 }
 
@@ -183,8 +242,6 @@ pub struct RunResultRequest {
     pub ended_at: Option<String>,
 }
 
-/// Frontend-facing identity payload (mirrors what the user pasted but adds
-/// the resolved profile). Plaintext API key is intentionally omitted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudIdentity {
@@ -195,12 +252,10 @@ pub struct CloudIdentity {
     pub key_id: String,
 }
 
-/// Persisted credential blob written to the OS keychain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairedAccount {
     pub base_url: String,
     pub api_key: String,
-    /// base64url no-pad — wire form, decoded only for HMAC ops.
     pub hmac_key_b64: String,
     pub sub: String,
     pub email: String,
@@ -228,7 +283,7 @@ pub enum CloudEvent {
     },
     Cleared,
     SnapshotChanged {
-        snapshot: CompetitionPayload,
+        snapshot: DisciplinePayload,
     },
     SnapshotError {
         message: String,
@@ -250,7 +305,7 @@ pub enum CloudEvent {
 #[serde(rename_all = "camelCase")]
 pub struct FailedPost {
     pub run_id: Uuid,
-    pub competition_id: Uuid,
+    pub discipline_id: Uuid,
     pub run_number: u32,
     pub status: RunStatus,
     pub original_time_ms: Option<u32>,
@@ -264,7 +319,7 @@ pub struct FailedPost {
 #[serde(rename_all = "camelCase")]
 pub struct OpenKidoResult {
     pub adopted: bool,
-    pub payload: CompetitionPayload,
+    pub payload: DisciplinePayload,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conflict: Option<KidoConflict>,
 }
@@ -272,8 +327,8 @@ pub struct OpenKidoResult {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KidoConflict {
-    pub current_competition_id: Uuid,
-    pub current_competition_name: String,
-    pub new_competition_id: Uuid,
-    pub new_competition_name: String,
+    pub current_discipline_id: Uuid,
+    pub current_discipline_name: String,
+    pub new_discipline_id: Uuid,
+    pub new_discipline_name: String,
 }

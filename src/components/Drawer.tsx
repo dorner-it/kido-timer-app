@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { t } from "../lib/i18n";
 import type { Theme } from "../lib/persistence";
 import type { ConnectionStatus } from "../lib/types";
-import type { CloudIdentity, CompetitionPayload, FailedPost } from "../lib/cloudTypes";
+import type { CloudIdentity, DisciplinePayload, FailedPost } from "../lib/cloudTypes";
 import { CloudSection } from "./CloudSection";
 
 interface Props {
@@ -17,7 +17,7 @@ interface Props {
   onReset: () => void;
   onOpenProtocol: () => void;
   cloudIdentity: CloudIdentity | null;
-  cloudSnapshot: CompetitionPayload | null;
+  cloudSnapshot: DisciplinePayload | null;
   cloudLoading: boolean;
   cloudResultMessage: string | null;
   cloudFailedPosts: FailedPost[];

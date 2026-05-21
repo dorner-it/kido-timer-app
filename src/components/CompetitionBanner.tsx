@@ -1,20 +1,28 @@
 import { t } from "../lib/i18n";
-import type { CompetitionPayload, Run } from "../lib/cloudTypes";
+import type { DisciplinePayload, Run } from "../lib/cloudTypes";
 
 interface Props {
-  snapshot: CompetitionPayload | null;
+  snapshot: DisciplinePayload | null;
   onClose: () => void;
 }
 
 export function CompetitionBanner({ snapshot, onClose }: Props) {
   if (!snapshot) return null;
-  const comp = snapshot.competition;
-  const currentRun = comp.current_run_id
-    ? snapshot.runs.find((r) => r.id === comp.current_run_id) ?? null
+  const event = snapshot.event;
+  const discipline = snapshot.discipline;
+  const currentRunId = event.current_run_id;
+  const currentRun = currentRunId
+    ? snapshot.runs.find((r) => r.id === currentRunId) ?? null
     : snapshot.runs.find((r) => r.status === "active") ?? null;
   const team = currentRun
     ? snapshot.teams.find((tm) => tm.id === currentRun.team_id) ?? null
     : null;
+  const teamEntry =
+    currentRun && team
+      ? snapshot.team_entries.find(
+          (e) => e.team_id === team.id && e.discipline_id === discipline.id,
+        ) ?? null
+      : null;
   const runner =
     currentRun && currentRun.runner_id
       ? snapshot.runners.find((r) => r.id === currentRun.runner_id) ?? null
@@ -26,15 +34,19 @@ export function CompetitionBanner({ snapshot, onClose }: Props) {
         <div className="min-w-0">
           <span className="label">{t.banner.activeCompetition}</span>
           <h3 className="mt-1 font-display text-[18px] font-medium tracking-tight text-ink-50 truncate">
-            {comp.name}
+            {event.name}
+            <span className="mx-2 font-mono text-[12px] text-ink-200/70">·</span>
+            <span className="font-display text-[16px] text-ink-100">
+              {discipline.name}
+            </span>
           </h3>
           <p className="mt-0.5 font-mono text-[11px] text-ink-200/70">
-            {formatDate(comp.date)}
-            {comp.location ? ` · ${comp.location}` : ""}
+            {formatDate(event.date)}
+            {event.location ? ` · ${event.location}` : ""}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {comp.sync_mode === "live" ? (
+          {discipline.sync_mode === "live" ? (
             <span className="rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.2em] bg-signal/15 text-signal-glow ring-1 ring-signal/30">
               {t.cloud.liveBadge}
             </span>
@@ -61,9 +73,11 @@ export function CompetitionBanner({ snapshot, onClose }: Props) {
         <Tile label="Team">
           {team ? (
             <p className="font-display text-[14px] text-ink-50 truncate">
-              <span className="font-mono text-[11px] tracking-wider text-ink-200/70 mr-2">
-                #{team.start_number}
-              </span>
+              {teamEntry && (
+                <span className="font-mono text-[11px] tracking-wider text-ink-200/70 mr-2">
+                  #{teamEntry.start_number}
+                </span>
+              )}
               {team.name}
             </p>
           ) : (
@@ -82,7 +96,9 @@ export function CompetitionBanner({ snapshot, onClose }: Props) {
       </div>
 
       <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-200/60">
-        {comp.sync_mode === "live" ? t.banner.syncLive : t.banner.syncOffline}
+        {discipline.sync_mode === "live"
+          ? t.banner.syncLive
+          : t.banner.syncOffline}
       </p>
     </div>
   );

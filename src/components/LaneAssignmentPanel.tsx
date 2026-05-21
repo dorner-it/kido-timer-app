@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import { t } from "../lib/i18n";
-import type { CompetitionPayload, Run } from "../lib/cloudTypes";
+import type { DisciplinePayload, Run } from "../lib/cloudTypes";
 import { pickRunForLane } from "../lib/useCloud";
 
 interface Props {
-  snapshot: CompetitionPayload;
+  snapshot: DisciplinePayload;
   laneOverrides: Record<number, string>;
   onSetOverride: (lane: number, runId: string | null) => void;
 }
@@ -30,7 +30,7 @@ export function LaneAssignmentPanel({
   );
 
   // Hide for the simple modes — auto-binding by lane works there.
-  const mode = snapshot.competition.mode;
+  const mode = snapshot.discipline.mode;
   if (mode === "single_lane" || mode === "two_lane_parallel") {
     return null;
   }
@@ -88,7 +88,7 @@ function RunHint({
   run,
   isAuto,
 }: {
-  snapshot: CompetitionPayload;
+  snapshot: DisciplinePayload;
   run: Run | null;
   isAuto: boolean;
 }) {
@@ -112,7 +112,7 @@ function RunHint({
   );
 }
 
-function labelForRun(snapshot: CompetitionPayload, r: Run): string {
+function labelForRun(snapshot: DisciplinePayload, r: Run): string {
   const team = snapshot.teams.find((tm) => tm.id === r.team_id);
   const runner = r.runner_id
     ? snapshot.runners.find((x) => x.id === r.runner_id)

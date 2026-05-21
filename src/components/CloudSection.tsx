@@ -2,14 +2,14 @@ import { useState } from "react";
 import { t } from "../lib/i18n";
 import type {
   CloudIdentity,
-  CompetitionPayload,
+  DisciplinePayload,
   FailedPost,
 } from "../lib/cloudTypes";
 import { FailedPostsPanel } from "./FailedPostsPanel";
 
 interface Props {
   identity: CloudIdentity | null;
-  snapshot: CompetitionPayload | null;
+  snapshot: DisciplinePayload | null;
   loading: boolean;
   resultMessage: string | null;
   failedPosts: FailedPost[];
@@ -102,7 +102,9 @@ export function CloudSection({
         <div className="rounded-xl border border-signal/30 bg-signal/5 p-4">
           <span className="label">{t.banner.activeCompetition}</span>
           <p className="mt-1 font-display text-[13px] text-ink-50">
-            {snapshot.competition.name}
+            {snapshot.event.name}
+            <span className="mx-1.5 text-ink-200/60">·</span>
+            <span className="text-ink-100">{snapshot.discipline.name}</span>
           </p>
           <button className="btn mt-3 w-full" onClick={onDeselect}>
             {t.cloud.deselect}
