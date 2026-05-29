@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { t } from "../lib/i18n";
+import { modeLabelDE, t } from "../lib/i18n";
 import type { DisciplineListItem, SyncMode } from "../lib/cloudTypes";
 
 interface Props {
@@ -129,7 +129,7 @@ export function CompetitionPicker({
                               {d.name}
                             </p>
                             <p className="mt-0.5 font-mono text-[11px] text-ink-200/80">
-                              {modeLabel(d.mode)}
+                              {modeLabelDE(d.mode)}
                             </p>
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
@@ -189,21 +189,6 @@ function SyncBadge({ mode }: { mode: SyncMode }) {
   ) : (
     <Badge color="warn" label={t.cloud.offlineBadge} />
   );
-}
-
-function modeLabel(m: string): string {
-  switch (m) {
-    case "single_lane":
-      return "Einzelbahn";
-    case "two_lane_parallel":
-      return "Zwei Bahnen parallel";
-    case "relay":
-      return "Staffel";
-    case "individual":
-      return "Einzel";
-    default:
-      return m;
-  }
 }
 
 function formatDate(iso: string): string {

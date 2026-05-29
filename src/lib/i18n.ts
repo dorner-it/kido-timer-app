@@ -17,6 +17,16 @@ export const t = {
     mode: "Modus",
     lane: "Bahn",
     state: "Status",
+    reset: "Reset",
+    resetTitle: "Gerät zurücksetzen",
+    resetConfirm: "Wirklich alle Bahnen am Gerät zurücksetzen?",
+    resetConfirmAction: "Bestätigen",
+    resetCancel: "Abbrechen",
+    confirmRun: "Lauf übernehmen",
+    confirmRunHint: "Bestätigte Bahnen an die Cloud melden",
+    confirmRunNone: "Keine Bahn wartet auf Übernahme",
+    confirmRunCount: (n: number) =>
+      n === 1 ? "1 Bahn bereit" : `${n} Bahnen bereit`,
   },
 
   conn: {
@@ -249,4 +259,29 @@ const STATE_FLAG: Record<StateFlag, string> = {
 
 export function stateFlagDE(s: StateFlag): string {
   return STATE_FLAG[s];
+}
+
+/**
+ * Disziplin-Bezeichnung für die UI. Mappt sowohl die neuen
+ * disziplinspezifischen Werte (`gruppenstaffette`, `loeschangriff`) als auch
+ * die historischen TimerMode-Werte aus dem Web-Backend, solange der
+ * Schema-Bump dort noch nicht ausgerollt ist.
+ */
+export function modeLabelDE(mode: string): string {
+  switch (mode) {
+    case "gruppenstaffette":
+      return "Gruppenstaffette (2 Bahnen)";
+    case "loeschangriff":
+      return "Löschangriff (4 Bahnen)";
+    case "single_lane":
+      return "Gruppenstaffette (Einzelbahn)";
+    case "two_lane_parallel":
+      return "Gruppenstaffette (2 Bahnen)";
+    case "relay":
+      return "Gruppenstaffette";
+    case "individual":
+      return "Löschangriff";
+    default:
+      return mode;
+  }
 }
