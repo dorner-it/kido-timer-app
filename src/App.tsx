@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TopBar } from "./components/TopBar";
 import { LaneGrid } from "./components/LaneGrid";
 import { Drawer } from "./components/Drawer";
@@ -16,7 +16,7 @@ import { useUpdater } from "./lib/useUpdater";
 import { useCloud } from "./lib/useCloud";
 import { loadSettings, patchSettings, type AppSettings, type Theme } from "./lib/persistence";
 import { t } from "./lib/i18n";
-import type { ChannelStatus, FrameDto } from "./lib/types";
+import type { ChannelStatus, FrameDto, RunEntry } from "./lib/types";
 import type { KidoConflict } from "./lib/cloudTypes";
 
 type View = "lanes" | "protocol";
@@ -95,12 +95,12 @@ export default function App() {
     Array(NUM_LANES).fill(null),
   );
   const startedAtRef = useRef<(string | null)[]>(Array(NUM_LANES).fill(null));
-  const lastConfirmedKeyRef = useRef<Set<string>>(new Set());
 
-  // Lanes waiting for the operator to confirm the captured time before it gets
-  // pushed to the cloud. Key = lane (1..4), value = history entry id.
-  const [pendingConfirms, setPendingConfirms] = useState<Map<number, string>>(
-    () => new Map(),
+  // Cloud-confirmed history entries (by id). An entry stays "pending" until
+  // its id lands in here. Tracked as state (not a ref) so the confirm-button
+  // count is reactive.
+  const [postedConfirmIds, setPostedConfirmIds] = useState<Set<string>>(
+    () => new Set(),
   );
 
   const cloudSnapshot = cloud.state.snapshot;
@@ -121,16 +121,9 @@ export default function App() {
 
       const nowIso = new Date().toISOString();
 
-      // Inactive → Running: a new run started on this lane. Drop any pending
-      // confirm for this lane — the operator did not take it over in time.
+      // Inactive → Running: a new run started on this lane.
       if (next === "running" && prev !== "running" && prev !== "captured") {
         startedAtRef.current[idx] = nowIso;
-        setPendingConfirms((pc) => {
-          if (!pc.has(lane)) return pc;
-          const copy = new Map(pc);
-          copy.delete(lane);
-          return copy;
-        });
         void cloudPostLaneStatus(lane, {
           status: "active",
           startedAt: nowIso,
@@ -145,12 +138,6 @@ export default function App() {
       ) {
         const startedAt = startedAtRef.current[idx];
         startedAtRef.current[idx] = null;
-        setPendingConfirms((pc) => {
-          if (!pc.has(lane)) return pc;
-          const copy = new Map(pc);
-          copy.delete(lane);
-          return copy;
-        });
         void cloudPostLaneStatus(lane, {
           status: "cancelled",
           startedAt,
@@ -160,49 +147,52 @@ export default function App() {
     });
   }, [frame, cloudSnapshot, cloudPostLaneStatus]);
 
-  // Captured → operator confirmation queue. We track every new history entry
-  // (the protocol emits Confirmed for many frames in a row, the history list
-  // dedups them). The actual cloud POST happens when the operator presses the
-  // central "Lauf übernehmen" button — see confirmPendingRuns below.
-  useEffect(() => {
-    if (!cloudSnapshot) return;
-    if (cloudSnapshot.discipline.sync_mode !== "live") return;
-    const head = conn.state.history[0];
-    if (!head) return;
-    if (lastConfirmedKeyRef.current.has(head.id)) return;
-    lastConfirmedKeyRef.current.add(head.id);
-    setPendingConfirms((pc) => {
-      const copy = new Map(pc);
-      copy.set(head.channel, head.id);
-      return copy;
-    });
-  }, [conn.state.history, cloudSnapshot]);
+  // Derive the operator-confirmation queue straight from the history list.
+  // Per lane we keep the newest entry whose id has not been posted yet; once
+  // confirmPendingRuns runs it adds the ids to `postedConfirmIds` and they
+  // drop out of this map. This is robust against all lanes being back in
+  // "inactive" state by the time the operator clicks — frame transitions are
+  // not what populates this anymore.
+  const pendingHistoryEntries = useMemo(() => {
+    const byLane = new Map<number, RunEntry>();
+    for (const entry of conn.state.history) {
+      if (postedConfirmIds.has(entry.id)) continue;
+      if (byLane.has(entry.channel)) continue;
+      byLane.set(entry.channel, entry);
+    }
+    return byLane;
+  }, [conn.state.history, postedConfirmIds]);
 
   const confirmPendingRuns = useCallback(() => {
-    if (pendingConfirms.size === 0) return;
-    pendingConfirms.forEach((historyId, lane) => {
-      const head = conn.state.history.find((h) => h.id === historyId);
-      if (!head) return;
+    if (pendingHistoryEntries.size === 0) return;
+    if (!cloudSnapshot) return;
+    if (cloudSnapshot.discipline.sync_mode !== "live") return;
+    const justPosted = new Set<string>();
+    pendingHistoryEntries.forEach((entry, lane) => {
       const startedAt = startedAtRef.current[lane - 1];
-      const endedAt = new Date(head.timestamp).toISOString();
+      const endedAt = new Date(entry.timestamp).toISOString();
       startedAtRef.current[lane - 1] = null;
       void cloudPostLaneStatus(lane, {
         status: "completed",
-        originalTimeMs: head.originalTimeMs,
+        originalTimeMs: entry.originalTimeMs,
         startedAt,
         endedAt,
       });
+      justPosted.add(entry.id);
     });
-    setPendingConfirms(new Map());
-  }, [pendingConfirms, cloudPostLaneStatus, conn.state.history]);
+    setPostedConfirmIds((prev) => {
+      const next = new Set(prev);
+      justPosted.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [pendingHistoryEntries, cloudSnapshot, cloudPostLaneStatus]);
 
   // Reset transition state when the snapshot changes (different competition
   // or none) so stale lane states don't leak across selections.
   useEffect(() => {
     lastChannelStatusRef.current = Array(NUM_LANES).fill(null);
     startedAtRef.current = Array(NUM_LANES).fill(null);
-    lastConfirmedKeyRef.current = new Set();
-    setPendingConfirms(new Map());
+    setPostedConfirmIds(new Set());
   }, [cloudSnapshot?.discipline.id]);
 
   // Global keyboard shortcuts (only on the lanes view)
@@ -349,9 +339,9 @@ export default function App() {
         onMenu={() => setDrawerOpen(true)}
         onReset={handleReset}
         onConfirmRun={confirmPendingRuns}
-        pendingConfirmCount={pendingConfirms.size}
+        pendingConfirmCount={pendingHistoryEntries.size}
         resetDisabled={conn.state.status !== "connected"}
-        confirmDisabled={pendingConfirms.size === 0}
+        confirmDisabled={pendingHistoryEntries.size === 0}
       />
 
       <main className="min-h-0 flex-1 flex flex-col">

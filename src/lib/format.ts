@@ -1,24 +1,35 @@
 import type { ChannelStatus } from "./types";
 
 /**
- * Format a millisecond value as `SS.mmm` (e.g. 3620 -> "03.620").
- * Returns dashes for inactive lanes.
+ * Format a millisecond value as `MM:SS.mmm` (e.g. 3620 -> "00:03.620",
+ * 125_400 -> "02:05.400"). Returns dashes for inactive lanes. Capped at
+ * 99:59.999 — the KiDo hardware never goes past two-digit minutes.
  */
 export function formatTime(timeMs: number, status: ChannelStatus): string {
-  if (status === "inactive") return "––.–––";
-  const ms = Math.max(0, Math.min(99_999, Math.round(timeMs)));
-  const secs = Math.floor(ms / 1000);
+  if (status === "inactive") return "––:––.–––";
+  const ms = Math.max(0, Math.min(99 * 60_000 + 59_999, Math.round(timeMs)));
+  const mins = Math.floor(ms / 60_000);
+  const secs = Math.floor((ms % 60_000) / 1000);
   const millis = ms % 1000;
-  return `${secs.toString().padStart(2, "0")}.${millis.toString().padStart(3, "0")}`;
+  return `${mins.toString().padStart(2, "0")}:${secs
+    .toString()
+    .padStart(2, "0")}.${millis.toString().padStart(3, "0")}`;
 }
 
+/**
+ * Format a correction delta as `±MM:SS.mmm`. Used both on the lane card
+ * footer and inside the breakdown bubble.
+ */
 export function formatCorrection(ms: number): string {
-  if (ms === 0) return "±0.000";
+  if (ms === 0) return "±00:00.000";
   const sign = ms > 0 ? "+" : "−";
-  const abs = Math.abs(ms);
-  const secs = Math.floor(abs / 1000);
+  const abs = Math.min(99 * 60_000 + 59_999, Math.abs(ms));
+  const mins = Math.floor(abs / 60_000);
+  const secs = Math.floor((abs % 60_000) / 1000);
   const millis = abs % 1000;
-  return `${sign}${secs.toString().padStart(2, "0")}.${millis.toString().padStart(3, "0")}`;
+  return `${sign}${mins.toString().padStart(2, "0")}:${secs
+    .toString()
+    .padStart(2, "0")}.${millis.toString().padStart(3, "0")}`;
 }
 
 /**
