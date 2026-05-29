@@ -175,7 +175,7 @@ export const t = {
     minus1: "−1 s",
     plus1: "+1 s",
     plus5: "+5 s",
-    inactivePlaceholder: "––.–––",
+    inactivePlaceholder: "––:––.–––",
     focusHint:
       "Bahn anklicken (oder Tasten 1–4) · +/− verstellt um ±5 s · C löscht Korrektur",
   },
