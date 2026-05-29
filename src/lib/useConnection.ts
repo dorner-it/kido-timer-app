@@ -113,8 +113,14 @@ function reducer(s: State, a: Action): State {
       const activeEntryId = [...s.activeEntryId];
 
       a.frame.channels.forEach((ch, idx) => {
-        if (ch.status === "confirmed") {
-          // New confirmed time on this lane — record an entry once.
+        // The hardware freezes timeMs on both "captured" and "confirmed".
+        // Some setups never advance past "captured" (operator hasn't pressed
+        // the device-side confirm, or the discipline doesn't need it — e.g.
+        // a full water tank stopping a Löschangriff lane on the line) so we
+        // treat captured as a result candidate too. The dedupe on
+        // lastConfirmed[idx] === ch.timeMs guarantees we only record the
+        // entry once even if captured → confirmed transitions later.
+        if (ch.status === "captured" || ch.status === "confirmed") {
           if (lastConfirmed[idx] !== ch.timeMs) {
             const id = `${Date.now()}-${idx}-${ch.timeMs}`;
             newHistory.unshift({
