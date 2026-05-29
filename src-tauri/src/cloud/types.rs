@@ -1,13 +1,67 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Disziplin-Bezeichner (Schema v3+). Während des Web-Schema-Rollouts kann
+/// das Backend kurzzeitig noch alte v2-Werte liefern; die UI über
+/// `modeLabelDE` mappt beide.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TimerMode {
+    Gruppenstaffette,
+    Loeschangriff,
+    // Legacy v2-Werte — werden vom alten Backend weiter geliefert, bis die
+    // DDB-Migration durchläuft. Nach v3-Rollout entfernen.
     SingleLane,
     TwoLaneParallel,
     Relay,
     Individual,
+}
+
+impl TimerMode {
+    /// Bahnen, die dieser Modus benutzt (2 bzw. 4). Legacy-Werte werden auf
+    /// ihre v3-Entsprechung gemappt. Aktuell vom Rust-Code nicht aufgerufen;
+    /// die UI lebt im React-Frontend.
+    #[allow(dead_code)]
+    pub fn lane_count(self) -> u8 {
+        match self {
+            TimerMode::Gruppenstaffette
+            | TimerMode::SingleLane
+            | TimerMode::TwoLaneParallel
+            | TimerMode::Relay => 2,
+            TimerMode::Loeschangriff | TimerMode::Individual => 4,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Gender {
+    Male,
+    Female,
+}
+
+/// Feste Wertungsgruppen aus Alter + Geschlecht des Roster.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Wertungsgruppe {
+    Wg1,
+    Wg2,
+    Wg3,
+    Wg4,
+    Wg5,
+}
+
+/// Stationen, an denen Strafrichter Strafen melden können.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StationKind {
+    Start,
+    Verteiler,
+    Strahlrohr,
+    Knoten,
+    Kuebelspritze,
+    Podest,
+    Strahlrohrlinie,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -95,6 +149,10 @@ pub struct ExportedEvent {
     pub created_at: Option<String>,
     #[serde(default)]
     pub updated_at: Option<String>,
+    /// Gemeinsamer Token für alle Strafrichter dieses Wettkampfs
+    /// (Schema v3+).
+    #[serde(default)]
+    pub station_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,6 +189,10 @@ pub struct TeamEntry {
     pub start_number: u32,
     #[serde(default)]
     pub lane: Option<u8>,
+    /// Aus Roster abgeleitete Wertungsgruppe — null bei Altbestand oder
+    /// inkonsistentem Roster.
+    #[serde(default)]
+    pub wg: Option<Wertungsgruppe>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
@@ -146,6 +208,10 @@ pub struct Runner {
     pub last_name: String,
     pub birth_date: String,
     pub position: u32,
+    /// Pflichtfeld ab Schema v3 — bleibt optional, weil Altbestand
+    /// vor der Migration kein Geschlecht trägt.
+    #[serde(default)]
+    pub gender: Option<Gender>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
@@ -197,6 +263,12 @@ pub struct Penalty {
     pub reviewed_at: Option<String>,
     #[serde(default)]
     pub reviewed_by: Option<String>,
+    /// Station, an der die Strafe gemeldet wurde (Schema v3+).
+    #[serde(default)]
+    pub station: Option<StationKind>,
+    /// Bei Löschangriff: Disqualifikation statt Zeitstrafe (Schema v3+).
+    #[serde(default)]
+    pub is_disqualification: bool,
 }
 
 /// Inner payload of a `.kido` envelope (schema v2). Also the response

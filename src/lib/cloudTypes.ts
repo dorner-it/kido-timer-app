@@ -1,7 +1,43 @@
-export type TimerMode = "single_lane" | "two_lane_parallel" | "relay" | "individual";
+/**
+ * Disziplin-Bezeichner (Schema v3+). Während des Web-Schema-Rollouts kann
+ * das Backend kurzzeitig noch alte v2-Werte liefern; der Helper
+ * `modeLabelDE` in `i18n.ts` mappt beide.
+ */
+export type TimerMode =
+  | "gruppenstaffette"
+  | "loeschangriff"
+  // Legacy v2-Werte — werden vom alten Backend weiter geliefert, bis die
+  // DDB-Migration durchläuft.
+  | "single_lane"
+  | "two_lane_parallel"
+  | "relay"
+  | "individual";
+
 export type SyncMode = "live" | "offline";
 export type RunStatus = "pending" | "active" | "completed" | "cancelled";
 export type PenaltyStatus = "pending" | "approved" | "rejected";
+
+export type Gender = "male" | "female";
+
+/**
+ * Feste Wertungsgruppen aus Alter + Geschlecht des Roster:
+ * - WG1: Jungen + Mädchen 8-10 (gemischt)
+ * - WG2: Jungen bis 14
+ * - WG3: Mädchen bis 14
+ * - WG4: Jungen bis 18
+ * - WG5: Mädchen bis 18
+ */
+export type Wertungsgruppe = "wg1" | "wg2" | "wg3" | "wg4" | "wg5";
+
+/** Stationen, an denen Strafrichter Strafen melden können. */
+export type StationKind =
+  | "start"
+  | "verteiler"
+  | "strahlrohr"
+  | "knoten"
+  | "kuebelspritze"
+  | "podest"          // nur Löschangriff
+  | "strahlrohrlinie"; // nur Löschangriff
 
 export interface CloudIdentity {
   baseUrl: string;
@@ -45,6 +81,8 @@ export interface ExportedEvent {
   current_run_id: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  /** Gemeinsamer Token für alle Strafrichter (Schema v3+). */
+  station_token?: string | null;
 }
 
 export interface Discipline {
@@ -71,6 +109,9 @@ export interface TeamEntry {
   event_id: string;
   start_number: number;
   lane: number | null;
+  /** Aus Roster abgeleitete Wertungsgruppe; null bei Altbestand oder
+   *  inkonsistentem Roster. */
+  wg?: Wertungsgruppe | null;
 }
 
 export interface Runner {
@@ -81,6 +122,8 @@ export interface Runner {
   last_name: string;
   birth_date: string;
   position: number;
+  /** Pflichtfeld ab Schema v3 — additiv eingeführt (null bei Altbestand). */
+  gender?: Gender | null;
 }
 
 export interface Run {
@@ -114,6 +157,10 @@ export interface Penalty {
   created_at: string;
   reviewed_at: string | null;
   reviewed_by: string | null;
+  /** Station, an der die Strafe gemeldet wurde (Schema v3+). */
+  station?: StationKind | null;
+  /** Bei Löschangriff: Disqualifikation statt Zeitstrafe. */
+  is_disqualification?: boolean;
 }
 
 export interface DisciplinePayload {
