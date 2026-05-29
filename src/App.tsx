@@ -11,6 +11,7 @@ import { CompetitionPicker } from "./components/CompetitionPicker";
 import { CompetitionBanner } from "./components/CompetitionBanner";
 import { LaneAssignmentPanel } from "./components/LaneAssignmentPanel";
 import { KidoConflictDialog } from "./components/KidoConflictDialog";
+import { ConfirmRunModal, type ConfirmRunStep } from "./components/ConfirmRunModal";
 import { useConnection } from "./lib/useConnection";
 import { useUpdater } from "./lib/useUpdater";
 import { useCloud } from "./lib/useCloud";
@@ -103,6 +104,12 @@ export default function App() {
     () => new Set(),
   );
 
+  // Two-step confirmation modal: first asks the operator to acknowledge the
+  // pending times, then offers the hardware reset. Closed = idle.
+  const [confirmModal, setConfirmModal] = useState<
+    { open: false } | { open: true; step: ConfirmRunStep }
+  >({ open: false });
+
   const cloudSnapshot = cloud.state.snapshot;
   const cloudPostLaneStatus = cloud.postLaneStatus;
   const frame = conn.state.frame;
@@ -163,7 +170,7 @@ export default function App() {
     return byLane;
   }, [conn.state.history, postedConfirmIds]);
 
-  const confirmPendingRuns = useCallback(() => {
+  const postPendingRuns = useCallback(() => {
     if (pendingHistoryEntries.size === 0) return;
     if (!cloudSnapshot) return;
     if (cloudSnapshot.discipline.sync_mode !== "live") return;
@@ -186,6 +193,29 @@ export default function App() {
       return next;
     });
   }, [pendingHistoryEntries, cloudSnapshot, cloudPostLaneStatus]);
+
+  const handleConfirmRunClick = useCallback(() => {
+    if (pendingHistoryEntries.size === 0) return;
+    setConfirmModal({ open: true, step: "confirm" });
+  }, [pendingHistoryEntries.size]);
+
+  const handleConfirmModalAccept = useCallback(() => {
+    postPendingRuns();
+    setConfirmModal({ open: true, step: "askReset" });
+  }, [postPendingRuns]);
+
+  const handleConfirmModalCancel = useCallback(() => {
+    setConfirmModal({ open: false });
+  }, []);
+
+  const handleConfirmModalAcceptReset = useCallback(async () => {
+    setConfirmModal({ open: false });
+    await conn.reset();
+  }, [conn]);
+
+  const handleConfirmModalSkipReset = useCallback(() => {
+    setConfirmModal({ open: false });
+  }, []);
 
   // Reset transition state when the snapshot changes (different competition
   // or none) so stale lane states don't leak across selections.
@@ -338,7 +368,7 @@ export default function App() {
         frameCount={conn.state.frameCount}
         onMenu={() => setDrawerOpen(true)}
         onReset={handleReset}
-        onConfirmRun={confirmPendingRuns}
+        onConfirmRun={handleConfirmRunClick}
         pendingConfirmCount={pendingHistoryEntries.size}
         resetDisabled={conn.state.status !== "connected"}
         confirmDisabled={pendingHistoryEntries.size === 0}
@@ -444,6 +474,16 @@ export default function App() {
         busy={kidoConflictBusy}
         onCancel={() => setPendingKidoConflict(null)}
         onConfirm={confirmKidoOverwrite}
+      />
+
+      <ConfirmRunModal
+        open={confirmModal.open}
+        step={confirmModal.open ? confirmModal.step : "confirm"}
+        entries={pendingHistoryEntries}
+        onCancel={handleConfirmModalCancel}
+        onConfirm={handleConfirmModalAccept}
+        onSkipReset={handleConfirmModalSkipReset}
+        onAcceptReset={handleConfirmModalAcceptReset}
       />
 
       <ErrorBanner message={conn.state.error} onDismiss={conn.clearError} />
