@@ -29,6 +29,20 @@ export const t = {
       n === 1 ? "1 Bahn bereit" : `${n} Bahnen bereit`,
   },
 
+  confirmModal: {
+    title: "Lauf übernehmen",
+    subtitle: "Diese Zeiten werden an den Wettkampf gemeldet:",
+    laneShort: "Bahn",
+    cancel: "Abbrechen",
+    confirm: "Zeiten übernehmen",
+    noEntries: "Keine Bahn wartet auf Übernahme.",
+    resetTitle: "Gerät zurücksetzen?",
+    resetBody:
+      "Zeiten übernommen. Sollen die Bahnen am Gerät jetzt zurückgesetzt werden, damit der nächste Lauf starten kann?",
+    resetSkip: "Nicht jetzt",
+    resetAccept: "Ja, Gerät zurücksetzen",
+  },
+
   conn: {
     statusIdle: "Bereit",
     statusConnecting: "Verbinde…",
