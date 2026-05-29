@@ -141,6 +141,13 @@ export const t = {
     runLabel: "Lauf",
     statusActive: "Aktiv",
     statusPending: "Wartend",
+    wgFilter: "Wertungsgruppe",
+    wgFilterAll: "Alle",
+    penaltyCount: (n: number) =>
+      n === 1 ? "1 Strafe" : `${n} Strafen`,
+    dq: "DQ",
+    penaltyHint:
+      "Strafen werden im Web-Frontend des Organisators bestätigt (Bulk-Approve pro Lauf).",
   },
 
   banner: {
@@ -259,6 +266,64 @@ const STATE_FLAG: Record<StateFlag, string> = {
 
 export function stateFlagDE(s: StateFlag): string {
   return STATE_FLAG[s];
+}
+
+/** Kurz-Label für eine Wertungsgruppe (WG1-5). */
+export function wgLabelDE(wg: string): string {
+  switch (wg) {
+    case "wg1":
+      return "WG 1";
+    case "wg2":
+      return "WG 2";
+    case "wg3":
+      return "WG 3";
+    case "wg4":
+      return "WG 4";
+    case "wg5":
+      return "WG 5";
+    default:
+      return wg.toUpperCase();
+  }
+}
+
+/** Beschreibung einer Wertungsgruppe (für Tooltips). */
+export function wgDescriptionDE(wg: string): string {
+  switch (wg) {
+    case "wg1":
+      return "Jungen + Mädchen 8-10 (gemischt)";
+    case "wg2":
+      return "Jungen bis 14";
+    case "wg3":
+      return "Mädchen bis 14";
+    case "wg4":
+      return "Jungen bis 18";
+    case "wg5":
+      return "Mädchen bis 18";
+    default:
+      return wg;
+  }
+}
+
+/** Label einer Strafrichter-Station. */
+export function stationLabelDE(station: string): string {
+  switch (station) {
+    case "start":
+      return "Start";
+    case "verteiler":
+      return "Verteiler";
+    case "strahlrohr":
+      return "Strahlrohr";
+    case "knoten":
+      return "Knoten";
+    case "kuebelspritze":
+      return "Kübelspritze";
+    case "podest":
+      return "Podest";
+    case "strahlrohrlinie":
+      return "Strahlrohrlinie";
+    default:
+      return station;
+  }
 }
 
 /**
